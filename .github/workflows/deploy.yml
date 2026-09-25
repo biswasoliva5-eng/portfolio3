@@ -2,8 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ['main'] # আপনার মেন ব্রাঞ্চ master হলে master লিখুন
-
+    branches: ['main'] 
 permissions:
   contents: read
   pages: write
