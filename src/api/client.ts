@@ -169,9 +169,10 @@ export const api = {
     if (isStaticHost()) {
       try {
         const fsData = await getFirestorePortfolioData();
-        if (fsData) {
-          saveLocalPortfolioData(fsData);
-          return fsData;
+        if (fsData && fsData.settings) {
+          const merged = { ...getLocalPortfolioData(), ...fsData } as PortfolioData;
+          saveLocalPortfolioData(merged);
+          return merged;
         }
       } catch (fsErr) {
         console.warn('Cloud Firestore fetch fallback to local:', fsErr);
@@ -186,9 +187,10 @@ export const api = {
         // Try Cloud Firestore first for persistent real-time database across all devices
         try {
           const fsData = await getFirestorePortfolioData();
-          if (fsData) {
-            saveLocalPortfolioData(fsData);
-            return fsData;
+          if (fsData && fsData.settings) {
+            const merged = { ...getLocalPortfolioData(), ...fsData } as PortfolioData;
+            saveLocalPortfolioData(merged);
+            return merged;
           }
         } catch (fsErr) {
           console.warn('Cloud Firestore fetch fallback to local:', fsErr);
@@ -214,7 +216,7 @@ export const api = {
         if (params?.featured) list = list.filter(a => a.isFeatured);
         if (params?.search) {
           const s = params.search.toLowerCase();
-          list = list.filter(a => a.title.toLowerCase().includes(s) || a.medium.toLowerCase().includes(s));
+          list = list.filter(a => a.title.toLowerCase().includes(s) || (a.medium && a.medium.toLowerCase().includes(s)));
         }
         return list;
       }

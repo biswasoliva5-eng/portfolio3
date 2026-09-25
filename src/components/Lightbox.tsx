@@ -128,7 +128,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
         </div>
 
         {/* Thumbnails if multiple images */}
-        {totalImages > 1 && (
+        {totalImages > 1 && artwork.images && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
             {artwork.images.map((img, idx) => (
               <button

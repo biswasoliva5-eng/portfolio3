@@ -561,7 +561,7 @@ class PortfolioDatabase {
 
   public getPublicData(): PortfolioData {
     const yearSet = new Set<string>();
-    (this.data.settings.customYears || ['2025', '2024', '2023', '2022', '2021', '2020']).forEach(y => yearSet.add(String(y)));
+    (this.data.settings.customYears || ['2025', '2024', '2023', '2022', '2021', '2020']).forEach((y: string) => yearSet.add(String(y)));
     this.data.artworks.forEach(a => {
       if (a.year) yearSet.add(String(a.year));
     });
@@ -569,14 +569,14 @@ class PortfolioDatabase {
 
     return {
       settings: this.data.settings,
-      categories: [...this.data.categories].sort((a, b) => a.order - b.order),
+      categories: [...this.data.categories].sort((a, b) => (a.order || 0) - (b.order || 0)),
       artworks: [...this.data.artworks].sort((a, b) => {
         const yearDiff = Number(b.year) - Number(a.year);
         if (yearDiff !== 0) return yearDiff;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       }),
       years: sortedYears,
-      exhibitions: [...this.data.exhibitions].sort((a, b) => a.order - b.order),
+      exhibitions: [...this.data.exhibitions].sort((a, b) => (a.order || 0) - (b.order || 0)),
       about: this.data.about,
       cv: this.data.cv,
       socialLinks: this.data.socialLinks.filter(s => s.isEnabled),
@@ -586,7 +586,7 @@ class PortfolioDatabase {
   // Years Management
   public getYears(): string[] {
     const yearSet = new Set<string>();
-    (this.data.settings.customYears || ['2025', '2024', '2023', '2022', '2021', '2020']).forEach(y => yearSet.add(String(y)));
+    (this.data.settings.customYears || ['2025', '2024', '2023', '2022', '2021', '2020']).forEach((y: string) => yearSet.add(String(y)));
     this.data.artworks.forEach(a => {
       if (a.year) yearSet.add(String(a.year));
     });
@@ -607,13 +607,13 @@ class PortfolioDatabase {
   public removeYear(year: string): string[] {
     const cleaned = String(year).trim();
     const current = this.data.settings.customYears || ['2025', '2024', '2023', '2022', '2021', '2020'];
-    this.data.settings.customYears = current.filter(y => y !== cleaned);
+    this.data.settings.customYears = current.filter((y: string) => y !== cleaned);
     this.saveToFile();
     return this.getYears();
   }
 
   public setYears(years: string[]): string[] {
-    this.data.settings.customYears = Array.from(new Set(years.map(y => String(y).trim()))).filter(Boolean).sort((a, b) => Number(b) - Number(a));
+    this.data.settings.customYears = Array.from(new Set(years.map((y: string) => String(y).trim()))).filter(Boolean).sort((a, b) => Number(b) - Number(a));
     this.saveToFile();
     return this.getYears();
   }
@@ -681,7 +681,7 @@ class PortfolioDatabase {
 
   // Categories
   public getCategories(): Category[] {
-    return [...this.data.categories].sort((a, b) => a.order - b.order);
+    return [...this.data.categories].sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
   public addCategory(catData: Omit<Category, 'id'>): Category {
@@ -736,7 +736,7 @@ class PortfolioDatabase {
 
   // Exhibitions
   public getExhibitions(): Exhibition[] {
-    return [...this.data.exhibitions].sort((a, b) => a.order - b.order);
+    return [...this.data.exhibitions].sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
   public addExhibition(exData: Omit<Exhibition, 'id'>): Exhibition {

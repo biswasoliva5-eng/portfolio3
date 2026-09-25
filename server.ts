@@ -65,8 +65,8 @@ async function startServer() {
         artworks = artworks.filter(
           a =>
             a.title.toLowerCase().includes(q) ||
-            a.medium.toLowerCase().includes(q) ||
-            a.description.toLowerCase().includes(q)
+            (a.medium && a.medium.toLowerCase().includes(q)) ||
+            (a.description && a.description.toLowerCase().includes(q))
         );
       }
       res.json(artworks);

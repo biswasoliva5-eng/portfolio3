@@ -17,13 +17,13 @@ interface Toast {
   message: string;
 }
 
-// Helper to get Vite base path without trailing slash, e.g. '/portfoli1' or ''
+// Helper to get Vite base path without trailing slash, e.g. '/portfolio3' or ''
 export const getAppBasePath = (): string => {
   const base = import.meta.env.BASE_URL || '/';
   return base === '/' ? '' : base.replace(/\/+$/, '');
 };
 
-// Converts full window.location.pathname (e.g. '/portfoli1/about') into app route (e.g. '/about')
+// Converts full window.location.pathname (e.g. '/portfolio3/about') into app route (e.g. '/about')
 export const normalizeAppPath = (pathname: string): string => {
   const basePath = getAppBasePath();
   let path = (pathname || '/').split('?')[0].split('#')[0];
@@ -37,7 +37,7 @@ export const normalizeAppPath = (pathname: string): string => {
   return path;
 };
 
-// Converts app route (e.g. '/about') into full browser path (e.g. '/portfoli1/about')
+// Converts app route (e.g. '/about') into full browser path (e.g. '/portfolio3/about')
 export const formatAppUrl = (route: string): string => {
   const basePath = getAppBasePath();
   const cleanRoute = route.startsWith('/') ? route : `/${route}`;
