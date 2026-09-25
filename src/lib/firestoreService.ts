@@ -147,3 +147,35 @@ export async function deleteFirestoreInquiry(id: string) {
   if (!db) return;
   await deleteDoc(doc(db, 'inquiries', id));
 }
+
+export async function saveFirestoreAdminCredentials(credentials: {
+  username: string;
+  passwordHash?: string;
+  passwordPlain?: string;
+  updatedAt?: string;
+}) {
+  const db = getDb();
+  if (!db) return;
+  await setDoc(doc(db, 'portfolio', 'auth'), credentials, { merge: true });
+}
+
+export async function getFirestoreAdminCredentials(): Promise<{
+  username?: string;
+  passwordHash?: string;
+  passwordPlain?: string;
+  updatedAt?: string;
+} | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    const snap = await getDoc(doc(db, 'portfolio', 'auth'));
+    if (snap.exists()) {
+      return snap.data() as any;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Firestore read admin credentials note:', err);
+    return null;
+  }
+}
+

@@ -17,6 +17,8 @@ import {
   saveLocalPortfolioDataAsync,
   getLocalAdminPassword,
   setLocalAdminPassword,
+  getLocalAdminUsername,
+  setLocalAdminUsername,
 } from '../data/defaultPortfolioData';
 import { compressImage } from '../utils/imageCompressor';
 import {
@@ -33,6 +35,8 @@ import {
   saveFirestoreSocialLinks,
   saveFirestoreInquiry,
   deleteFirestoreInquiry,
+  saveFirestoreAdminCredentials,
+  getFirestoreAdminCredentials,
 } from '../lib/firestoreService';
 
 const AUTH_TOKEN_KEY = 'oliva_biswas_admin_token';
@@ -276,23 +280,41 @@ export const api = {
       });
       if (res.token && res.username) {
         setStoredToken(res.token, res.username);
+        setLocalAdminUsername(res.username);
       }
       return res;
     } catch (err: any) {
-      // If server is absent (e.g. Netlify static hosting where Node backend is not running)
+      // If server is absent (e.g. static hosting where Node backend is not running)
       if (isStaticHostingError(err)) {
-        const validPassword = getLocalAdminPassword();
-        const normalizedUser = username.trim().toLowerCase();
-        if (
-          (normalizedUser === 'olivabiswas' || normalizedUser === 'admin') &&
-          password.trim() === validPassword
-        ) {
+        // Try reading custom credentials from Firestore
+        let validPassword = getLocalAdminPassword();
+        let validUsername = getLocalAdminUsername();
+        try {
+          const fsCreds = await getFirestoreAdminCredentials();
+          if (fsCreds) {
+            if (fsCreds.username) validUsername = fsCreds.username;
+            if (fsCreds.passwordPlain) validPassword = fsCreds.passwordPlain;
+          }
+        } catch {
+          // ignore
+        }
+
+        const normalizedInput = username.trim().toLowerCase();
+        const normalizedTarget = validUsername.trim().toLowerCase();
+        const isMatch =
+          (normalizedInput === normalizedTarget ||
+            (normalizedTarget !== 'admin' && normalizedInput === 'admin') ||
+            (normalizedTarget !== 'olivabiswas' && normalizedInput === 'olivabiswas')) &&
+          password.trim() === validPassword;
+
+        if (isMatch) {
           const fallbackToken = `static_auth_${Date.now()}`;
-          setStoredToken(fallbackToken, username.trim());
+          setStoredToken(fallbackToken, validUsername);
+          setLocalAdminUsername(validUsername);
           return {
             success: true,
             token: fallbackToken,
-            username: username.trim(),
+            username: validUsername,
           };
         } else {
           throw new Error('Invalid username or password. Please verify credentials.');
@@ -308,7 +330,7 @@ export const api = {
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         const token = getStoredToken();
-        const username = getStoredUsername();
+        const username = getStoredUsername() || getLocalAdminUsername();
         if (token && username) {
           return { authenticated: true, username };
         }
@@ -329,10 +351,20 @@ export const api = {
 
   changePassword: async (currentPassword: string, newPassword: string) => {
     try {
-      return await request<{ success: boolean; token: string; message: string }>('/api/auth/change-password', {
+      const res = await request<{ success: boolean; token: string; message: string }>('/api/auth/change-password', {
         method: 'POST',
         body: JSON.stringify({ currentPassword, newPassword }),
       });
+      if (res.token) {
+        setStoredToken(res.token, getStoredUsername() || getLocalAdminUsername());
+      }
+      setLocalAdminPassword(newPassword);
+      saveFirestoreAdminCredentials({
+        username: getStoredUsername() || getLocalAdminUsername(),
+        passwordPlain: newPassword,
+        updatedAt: new Date().toISOString(),
+      }).catch(e => console.warn('Firestore password sync note:', e));
+      return res;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         const stored = getLocalAdminPassword();
@@ -340,8 +372,14 @@ export const api = {
           throw new Error('Current password does not match.');
         }
         setLocalAdminPassword(newPassword);
+        saveFirestoreAdminCredentials({
+          username: getStoredUsername() || getLocalAdminUsername(),
+          passwordPlain: newPassword,
+          updatedAt: new Date().toISOString(),
+        }).catch(e => console.warn('Firestore password sync note:', e));
+
         const token = `static_auth_${Date.now()}`;
-        setStoredToken(token, getStoredUsername() || 'olivabiswas');
+        setStoredToken(token, getStoredUsername() || getLocalAdminUsername());
         return { success: true, token, message: 'Password updated successfully.' };
       }
       throw err;
@@ -350,13 +388,27 @@ export const api = {
 
   changeUsername: async (newUsername: string) => {
     try {
-      return await request<{ success: boolean; username: string }>('/api/admin/change-username', {
+      const res = await request<{ success: boolean; username: string }>('/api/admin/change-username', {
         method: 'POST',
         body: JSON.stringify({ newUsername }),
       });
+      setLocalAdminUsername(res.username || newUsername);
+      setStoredToken(getStoredToken() || `auth_${Date.now()}`, res.username || newUsername);
+      saveFirestoreAdminCredentials({
+        username: res.username || newUsername,
+        passwordPlain: getLocalAdminPassword(),
+        updatedAt: new Date().toISOString(),
+      }).catch(e => console.warn('Firestore username sync note:', e));
+      return res;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
-        setStoredToken(getStoredToken() || 'static_auth', newUsername);
+        setLocalAdminUsername(newUsername);
+        setStoredToken(getStoredToken() || `static_auth_${Date.now()}`, newUsername);
+        saveFirestoreAdminCredentials({
+          username: newUsername,
+          passwordPlain: getLocalAdminPassword(),
+          updatedAt: new Date().toISOString(),
+        }).catch(e => console.warn('Firestore username sync note:', e));
         return { success: true, username: newUsername };
       }
       throw err;

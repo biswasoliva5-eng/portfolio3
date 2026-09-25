@@ -15,7 +15,7 @@ import { AdminLoginView } from './views/admin/AdminLoginView';
 import { Menu, X } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { currentPath, data, loading, clearFilters, navigate, hasEntered } = usePortfolio();
+  const { currentPath, data, loading, clearFilters, navigate, hasEntered, isAdmin } = usePortfolio();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Scroll to top on route change
@@ -65,8 +65,16 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 1. Admin Routes (rendered in its own self-contained view)
+  // 1. Admin Routes (rendered in its own self-contained view with authentication check)
   if (currentPath === '/admin/login') {
+    if (isAdmin) {
+      return (
+        <>
+          <AdminView />
+          <ToastContainer />
+        </>
+      );
+    }
     return (
       <>
         <AdminLoginView />
@@ -76,6 +84,14 @@ const AppContent: React.FC = () => {
   }
 
   if (currentPath.startsWith('/admin')) {
+    if (!isAdmin) {
+      return (
+        <>
+          <AdminLoginView />
+          <ToastContainer />
+        </>
+      );
+    }
     return (
       <>
         <AdminView />

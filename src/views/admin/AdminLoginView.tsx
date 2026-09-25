@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { usePortfolio } from '../../context/PortfolioContext';
 import { api } from '../../api/client';
-import { Lock, ArrowLeft } from 'lucide-react';
+import { Lock, ArrowLeft, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
 export const AdminLoginView: React.FC = () => {
   const { loginAdmin, navigate, showToast, formatUrl } = usePortfolio();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,14 +73,23 @@ export const AdminLoginView: React.FC = () => {
 
             <div>
               <label className="block text-neutral-600 mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full border border-neutral-200 px-3 py-2 text-xs focus:outline-hidden focus:border-neutral-900 transition-colors"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full border border-neutral-200 px-3 py-2 pr-9 text-xs focus:outline-hidden focus:border-neutral-900 transition-colors font-mono"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 p-1"
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -103,7 +113,10 @@ export const AdminLoginView: React.FC = () => {
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Portfolio</span>
             </a>
-            <span className="text-[11px]">Default: olivabiswas / oliva23</span>
+            <span className="text-[11px] flex items-center gap-1 text-neutral-500">
+              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+              <span>Secure CMS Portal</span>
+            </span>
           </div>
         </div>
       </div>

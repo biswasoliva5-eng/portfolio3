@@ -113,20 +113,37 @@ export interface SiteSettings {
   coverImage?: string;
   showCoverOnLanding?: boolean;
   enterButtonText?: string;
+  coverAdditionalText?: string;
+  showCoverTitle?: boolean;
+  showCoverSubtitle?: boolean;
+  showCoverEnter?: boolean;
+  showCoverAdditional?: boolean;
   coverNamePosition?: CoverPosition;
   coverEnterPosition?: CoverPosition;
   coverNameFontSize?: string;
   coverSubtitleFontSize?: string;
   coverEnterFontSize?: string;
   coverFontFamily?: string;
+  coverNameFontWeight?: string;
   coverNameLetterSpacing?: string;
+  coverTextTransform?: string;
+  coverTextShadow?: string;
   coverEnterShape?: string;
   coverOverlayStyle?: string;
+  coverOverlayOpacity?: number;
   coverNameColor?: string;
   coverSubtitleColor?: string;
   coverEnterTextColor?: string;
   coverEnterBgColor?: string;
   coverEnterBorderColor?: string;
+  coverFocalX?: number; // 0 to 100 percentage
+  coverFocalY?: number; // 0 to 100 percentage
+  coverZoom?: number; // 100 to 250 percentage
+  coverBrightness?: number; // 50 to 150 percentage
+  coverContrast?: number; // 50 to 150 percentage
+  coverBlur?: number; // 0 to 20 px
+  coverFitMode?: 'cover' | 'contain' | 'auto';
+  coverAspectRatio?: string;
   customYears?: string[];
 }
 

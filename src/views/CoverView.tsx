@@ -8,10 +8,17 @@ export const CoverView: React.FC = () => {
   const settings = data?.settings;
   const artistName = settings?.artistName || 'OLIVA BISWAS';
   const headerSubtitle = settings?.headerSubtitle?.trim() || '';
+  const additionalText = settings?.coverAdditionalText?.trim() || '';
   const coverImage =
     settings?.coverImage ||
     'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=2400&auto=format&fit=crop';
   const enterText = settings?.enterButtonText || 'ENTER';
+
+  // Visibility toggles (defaults to true)
+  const showTitle = settings?.showCoverTitle !== false;
+  const showSubtitle = settings?.showCoverSubtitle !== false && !!headerSubtitle;
+  const showEnter = settings?.showCoverEnter !== false;
+  const showAdditional = (settings?.showCoverAdditional ?? !!additionalText) && !!additionalText;
 
   // Positioning configuration (Defaults: Name on bottom-left, Enter on bottom-right)
   const namePos: CoverPosition = settings?.coverNamePosition || 'bottom-left';
@@ -22,9 +29,13 @@ export const CoverView: React.FC = () => {
   const subtitleFontSizeKey = settings?.coverSubtitleFontSize || 'sm';
   const enterFontSizeKey = settings?.coverEnterFontSize || 'sm';
   const fontFamilyKey = settings?.coverFontFamily || 'sans';
+  const fontWeightKey = settings?.coverNameFontWeight || 'normal';
   const letterSpacingKey = settings?.coverNameLetterSpacing || 'wider';
+  const textTransformKey = settings?.coverTextTransform || 'uppercase';
+  const textShadowKey = settings?.coverTextShadow || 'medium';
   const enterShapeKey = settings?.coverEnterShape || 'rectangle';
   const overlayStyleKey = settings?.coverOverlayStyle || 'gradient';
+  const overlayOpacityVal = settings?.coverOverlayOpacity;
 
   // Colors
   const nameColor = settings?.coverNameColor || '#ffffff';
@@ -36,6 +47,15 @@ export const CoverView: React.FC = () => {
       : 'transparent';
   const enterBorderColor = settings?.coverEnterBorderColor || '#ffffff';
 
+  // Image Framing & Adjustments
+  const focalX = settings?.coverFocalX ?? 50;
+  const focalY = settings?.coverFocalY ?? 50;
+  const zoom = settings?.coverZoom ?? 100;
+  const brightness = settings?.coverBrightness ?? 100;
+  const contrast = settings?.coverContrast ?? 100;
+  const blur = settings?.coverBlur ?? 0;
+  const fitMode = settings?.coverFitMode || 'cover';
+
   const handleEnter = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     enterPortfolio();
@@ -44,6 +64,8 @@ export const CoverView: React.FC = () => {
   // Font size classes mapping
   const getNameFontSizeClass = () => {
     switch (nameFontSizeKey) {
+      case '10xl':
+        return 'text-6xl sm:text-8xl md:text-9xl lg:text-[10rem]';
       case '9xl':
         return 'text-5xl sm:text-7xl md:text-8xl lg:text-9xl';
       case '7xl':
@@ -54,6 +76,8 @@ export const CoverView: React.FC = () => {
         return 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl';
       case '4xl':
         return 'text-xl sm:text-2xl md:text-3xl lg:text-4xl';
+      case '3xl':
+        return 'text-lg sm:text-xl md:text-2xl lg:text-3xl';
       case '8xl':
       default:
         return 'text-4xl sm:text-6xl md:text-7xl lg:text-8xl';
@@ -92,25 +116,83 @@ export const CoverView: React.FC = () => {
     switch (fontFamilyKey) {
       case 'serif':
         return 'font-serif';
+      case 'playfair':
+        return 'font-serif italic';
+      case 'cinzel':
+        return 'font-serif tracking-[0.2em]';
       case 'mono':
         return 'font-mono';
+      case 'display':
+        return 'font-sans font-black';
+      case 'bengali':
+        return 'font-sans';
       case 'sans':
       default:
         return 'font-sans';
     }
   };
 
+  const getFontWeightClass = () => {
+    switch (fontWeightKey) {
+      case 'light':
+        return 'font-light';
+      case 'medium':
+        return 'font-medium';
+      case 'semibold':
+        return 'font-semibold';
+      case 'bold':
+        return 'font-bold';
+      case 'black':
+        return 'font-black';
+      case 'normal':
+      default:
+        return 'font-normal';
+    }
+  };
+
   const getLetterSpacingClass = () => {
     switch (letterSpacingKey) {
+      case 'tight':
+        return 'tracking-tight';
       case 'normal':
         return 'tracking-normal';
       case 'wide':
         return 'tracking-[0.08em]';
       case 'widest':
         return 'tracking-[0.25em]';
+      case 'ultra':
+        return 'tracking-[0.38em]';
       case 'wider':
       default:
         return 'tracking-[0.14em]';
+    }
+  };
+
+  const getTextTransformClass = () => {
+    switch (textTransformKey) {
+      case 'capitalize':
+        return 'capitalize';
+      case 'none':
+        return 'normal-case';
+      case 'uppercase':
+      default:
+        return 'uppercase';
+    }
+  };
+
+  const getTextShadowClass = () => {
+    switch (textShadowKey) {
+      case 'none':
+        return '';
+      case 'subtle':
+        return 'drop-shadow-sm';
+      case 'strong':
+        return 'drop-shadow-2xl';
+      case 'glow':
+        return '[text-shadow:_0_0_24px_rgba(0,0,0,0.95),_0_2px_8px_rgba(0,0,0,0.9)]';
+      case 'medium':
+      default:
+        return 'drop-shadow-lg';
     }
   };
 
@@ -137,6 +219,10 @@ export const CoverView: React.FC = () => {
         return 'bg-black/20';
       case 'none':
         return 'bg-transparent';
+      case 'warm':
+        return 'bg-amber-950/40 mix-blend-multiply';
+      case 'cool':
+        return 'bg-slate-950/50';
       case 'gradient':
       default:
         return 'bg-gradient-to-t from-black/85 via-black/25 to-black/30';
@@ -152,6 +238,10 @@ export const CoverView: React.FC = () => {
         return 'absolute bottom-6 right-6 sm:bottom-10 sm:right-10 md:bottom-12 md:right-12 lg:bottom-16 lg:right-16 text-right items-end';
       case 'center':
         return 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center items-center';
+      case 'center-left':
+        return 'absolute top-1/2 left-6 sm:left-10 md:left-12 lg:left-16 -translate-y-1/2 text-left items-start';
+      case 'center-right':
+        return 'absolute top-1/2 right-6 sm:right-10 md:right-12 lg:right-16 -translate-y-1/2 text-right items-end';
       case 'top-left':
         return 'absolute top-6 left-6 sm:top-10 sm:left-10 md:top-12 md:left-12 lg:top-16 lg:left-16 text-left items-start';
       case 'top-center':
@@ -167,27 +257,37 @@ export const CoverView: React.FC = () => {
   const isSamePosition = namePos === enterPos;
 
   // Subtitle component
-  const SubtitleBlock = headerSubtitle ? (
+  const SubtitleBlock = showSubtitle ? (
     <div
       style={{ color: subtitleColor }}
-      className={`uppercase font-light mb-2 sm:mb-3 drop-shadow-md ${getSubtitleFontSizeClass()}`}
+      className={`font-light mb-2 sm:mb-3 drop-shadow-md ${getTextTransformClass()} ${getSubtitleFontSizeClass()}`}
     >
       {headerSubtitle}
     </div>
   ) : null;
 
+  // Additional text / badge component
+  const AdditionalTextBlock = showAdditional ? (
+    <div
+      style={{ color: subtitleColor }}
+      className="text-[10px] sm:text-[11px] uppercase tracking-[0.25em] opacity-80 mt-1 mb-2 font-light"
+    >
+      {additionalText}
+    </div>
+  ) : null;
+
   // Artist Name component
-  const ArtistNameBlock = (
+  const ArtistNameBlock = showTitle ? (
     <h1
       style={{ color: nameColor }}
-      className={`font-normal uppercase leading-[1.05] drop-shadow-lg ${getNameFontSizeClass()} ${getFontFamilyClass()} ${getLetterSpacingClass()}`}
+      className={`leading-[1.05] ${getNameFontSizeClass()} ${getFontFamilyClass()} ${getFontWeightClass()} ${getLetterSpacingClass()} ${getTextTransformClass()} ${getTextShadowClass()}`}
     >
       {artistName}
     </h1>
-  );
+  ) : null;
 
   // Enter button component
-  const EnterButtonBlock = (
+  const EnterButtonBlock = showEnter ? (
     <button
       id="cover-enter-btn"
       type="button"
@@ -201,7 +301,7 @@ export const CoverView: React.FC = () => {
     >
       {enterText}
     </button>
-  );
+  ) : null;
 
   return (
     <div
@@ -209,15 +309,28 @@ export const CoverView: React.FC = () => {
       onClick={handleEnter}
       className="fixed inset-0 w-screen h-screen overflow-hidden bg-black select-none cursor-pointer flex items-center justify-center"
     >
-      {/* 1. Full-bleed background artwork image */}
+      {/* 1. Background artwork image with user-configured focal crop, zoom, and filters */}
       <img
         src={coverImage}
         alt={`${artistName} Artwork Cover`}
-        className="absolute inset-0 w-full h-full object-cover object-center scale-100 transition-transform duration-1000 ease-out hover:scale-102"
+        style={{
+          objectPosition: `${focalX}% ${focalY}%`,
+          transform: `scale(${zoom / 100})`,
+          filter: `brightness(${brightness}%) contrast(${contrast}%) blur(${blur}px)`,
+          objectFit: fitMode as any,
+        }}
+        className="absolute inset-0 w-full h-full transition-transform duration-700 ease-out"
       />
 
-      {/* 2. Ambient contrast scrim */}
-      <div className={`absolute inset-0 pointer-events-none transition-colors duration-500 ${getOverlayClass()}`} />
+      {/* 2. Ambient contrast scrim / overlay */}
+      <div
+        style={
+          typeof overlayOpacityVal === 'number'
+            ? { opacity: overlayOpacityVal / 100 }
+            : undefined
+        }
+        className={`absolute inset-0 pointer-events-none transition-colors duration-500 ${getOverlayClass()}`}
+      />
 
       {/* Top right Admin shortcut */}
       <a
@@ -243,31 +356,36 @@ export const CoverView: React.FC = () => {
           <div>
             {SubtitleBlock}
             {ArtistNameBlock}
+            {AdditionalTextBlock}
           </div>
-          <div>{EnterButtonBlock}</div>
+          {EnterButtonBlock && <div>{EnterButtonBlock}</div>}
         </div>
       ) : (
         /* Render independently at distinct configured positions */
         <>
           {/* Artist Name Block */}
-          <div
-            onClick={e => e.stopPropagation()}
-            className={`z-10 p-4 max-w-3xl lg:max-w-4xl flex flex-col pointer-events-auto ${getPositionClasses(namePos)}`}
-          >
-            {SubtitleBlock}
-            {ArtistNameBlock}
-          </div>
+          {(showTitle || showSubtitle || showAdditional) && (
+            <div
+              onClick={e => e.stopPropagation()}
+              className={`z-10 p-4 max-w-3xl lg:max-w-4xl flex flex-col pointer-events-auto ${getPositionClasses(namePos)}`}
+            >
+              {SubtitleBlock}
+              {ArtistNameBlock}
+              {AdditionalTextBlock}
+            </div>
+          )}
 
           {/* Enter Button Block */}
-          <div
-            onClick={e => e.stopPropagation()}
-            className={`z-10 p-4 pointer-events-auto ${getPositionClasses(enterPos)}`}
-          >
-            {EnterButtonBlock}
-          </div>
+          {EnterButtonBlock && (
+            <div
+              onClick={e => e.stopPropagation()}
+              className={`z-10 p-4 pointer-events-auto ${getPositionClasses(enterPos)}`}
+            >
+              {EnterButtonBlock}
+            </div>
+          )}
         </>
       )}
     </div>
   );
 };
-

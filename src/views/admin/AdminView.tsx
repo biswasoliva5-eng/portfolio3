@@ -17,16 +17,22 @@ import {
   Upload,
   User,
   Image as ImageIcon,
+  Shield,
+  KeyRound,
 } from 'lucide-react';
 import { Artwork, Category, Exhibition } from '../../types';
+import { CoverPhotoManager } from '../../components/admin/CoverPhotoManager';
+import { AdminSecurityManager } from '../../components/admin/AdminSecurityManager';
 
 type AdminTab =
   | 'artworks'
   | 'categories'
   | 'exhibitions'
+  | 'cover'
   | 'about'
   | 'cv'
   | 'settings'
+  | 'security'
   | 'messages';
 
 export const AdminView: React.FC = () => {
@@ -325,6 +331,18 @@ export const AdminView: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setCurrentTab('cover')}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-left transition-colors cursor-pointer ${
+              currentTab === 'cover'
+                ? 'bg-neutral-900 text-white font-medium'
+                : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>Cover Photo & Hero</span>
+          </button>
+
+          <button
             onClick={() => setCurrentTab('about')}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-left transition-colors cursor-pointer ${
               currentTab === 'about'
@@ -358,6 +376,18 @@ export const AdminView: React.FC = () => {
           >
             <Sliders className="w-4 h-4" />
             <span>Site Settings</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentTab('security')}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-left transition-colors cursor-pointer ${
+              currentTab === 'security'
+                ? 'bg-neutral-900 text-white font-medium'
+                : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            <span>Security & Password</span>
           </button>
 
           <button
@@ -704,14 +734,56 @@ export const AdminView: React.FC = () => {
             </div>
           )}
 
+          {/* COVER & HERO STUDIO TAB */}
+          {currentTab === 'cover' && (
+            <CoverPhotoManager
+              showToast={showToast}
+              onSaved={refreshData}
+            />
+          )}
+
           {/* 6. SETTINGS TAB */}
           {currentTab === 'settings' && (
             <form onSubmit={handleSaveSettings} className="space-y-6 max-w-2xl text-xs font-sans">
-              <div className="pb-4 border-b border-neutral-100">
-                <h2 className="text-base font-semibold text-neutral-950">Site & Cover Settings</h2>
-                <p className="text-xs text-neutral-400">
-                  Artist branding, contact email, and full-screen cover hero display
-                </p>
+              <div className="pb-4 border-b border-neutral-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-neutral-950">Site & General Settings</h2>
+                  <p className="text-xs text-neutral-400">
+                    Artist identity, contact coordinates, and studio info
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('cover')}
+                  className="px-3 py-1.5 bg-neutral-950 text-white rounded text-xs font-medium hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>Cover Photo Studio →</span>
+                </button>
+              </div>
+
+              {/* Quick Callout to Cover Studio */}
+              <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-2.5 text-amber-950">
+                  <div className="p-1.5 bg-amber-100 rounded text-amber-800">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-xs text-amber-900">
+                      Looking to customize the Cover Photo, Crop, Fonts & Colors?
+                    </div>
+                    <div className="text-[11px] text-amber-700">
+                      Use the dedicated Cover Studio with live interactive preview, canvas cropper, and color pickers.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('cover')}
+                  className="px-3 py-1.5 bg-amber-900 text-white rounded text-xs font-medium hover:bg-amber-800 transition-colors shrink-0 ml-3"
+                >
+                  Open Studio
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -800,6 +872,30 @@ export const AdminView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Security & Password Card */}
+              <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 bg-neutral-200 rounded text-neutral-800">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-xs text-neutral-900">
+                      Admin Password & Username Security
+                    </div>
+                    <div className="text-[11px] text-neutral-500">
+                      Update your login password and username to prevent unauthorized access.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('security')}
+                  className="px-3 py-1.5 bg-neutral-900 text-white rounded text-xs font-medium hover:bg-neutral-800 transition-colors shrink-0 ml-3"
+                >
+                  Manage Security →
+                </button>
+              </div>
+
               <button
                 type="submit"
                 disabled={savingSettings}
@@ -808,6 +904,11 @@ export const AdminView: React.FC = () => {
                 {savingSettings ? 'Saving...' : 'Save Settings'}
               </button>
             </form>
+          )}
+
+          {/* SECURITY & PASSWORD TAB */}
+          {currentTab === 'security' && (
+            <AdminSecurityManager showToast={showToast} />
           )}
 
           {/* 7. INQUIRIES TAB */}

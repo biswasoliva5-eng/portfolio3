@@ -475,6 +475,7 @@ export const defaultPortfolioData: PortfolioData = {
 
 const STORAGE_KEY = 'oliva_biswas_portfolio_v2';
 const ADMIN_PASS_KEY = 'oliva_biswas_admin_pass';
+const ADMIN_USERNAME_KEY = 'oliva_biswas_admin_username_cfg';
 
 export function getLocalPortfolioData(): PortfolioData {
   if (typeof window === 'undefined') return defaultPortfolioData;
@@ -529,4 +530,14 @@ export function getLocalAdminPassword(): string {
 export function setLocalAdminPassword(password: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(ADMIN_PASS_KEY, password);
+}
+
+export function getLocalAdminUsername(): string {
+  if (typeof window === 'undefined') return 'olivabiswas';
+  return localStorage.getItem(ADMIN_USERNAME_KEY) || 'olivabiswas';
+}
+
+export function setLocalAdminUsername(username: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ADMIN_USERNAME_KEY, username.trim());
 }
