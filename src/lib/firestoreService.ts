@@ -55,14 +55,16 @@ export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData
     const inquiries: ContactMessage[] = [];
     inquiriesSnap.forEach(d => inquiries.push(d.data() as ContactMessage));
 
+    const isInitialized = settingsSnap.exists() || aboutSnap.exists();
+
     return {
       settings: settingsSnap.exists() ? (settingsSnap.data() as SiteSettings) : undefined,
       about: aboutSnap.exists() ? (aboutSnap.data() as AboutContent) : undefined,
       cv: cvSnap.exists() ? (cvSnap.data() as CVDoc) : null,
       socialLinks: socialSnap.exists() ? (socialSnap.data().items as SocialLink[]) : undefined,
-      artworks: artworks.length > 0 ? artworks : undefined,
-      categories: categories.length > 0 ? categories : undefined,
-      exhibitions: exhibitions.length > 0 ? exhibitions : undefined,
+      artworks: artworks.length > 0 ? artworks : (isInitialized ? [] : undefined),
+      categories: categories.length > 0 ? categories : (isInitialized ? [] : undefined),
+      exhibitions: exhibitions.length > 0 ? exhibitions : (isInitialized ? [] : undefined),
       inquiries: inquiries.length > 0 ? inquiries : undefined,
       messages: inquiries.length > 0 ? inquiries : undefined,
     };

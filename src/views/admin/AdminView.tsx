@@ -19,10 +19,18 @@ import {
   Image as ImageIcon,
   Shield,
   KeyRound,
+  ArrowUp,
+  ArrowDown,
+  Video,
+  ChevronsUp,
+  ChevronsDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Artwork, Category, Exhibition } from '../../types';
 import { CoverPhotoManager } from '../../components/admin/CoverPhotoManager';
 import { AdminSecurityManager } from '../../components/admin/AdminSecurityManager';
+import { CVManager } from '../../components/admin/CVManager';
+import { CloudinarySettingsCard } from '../../components/admin/CloudinarySettingsCard';
 
 type AdminTab =
   | 'artworks'
@@ -43,6 +51,9 @@ export const AdminView: React.FC = () => {
   const [editingArtwork, setEditingArtwork] = useState<Partial<Artwork> | null>(null);
   const [isArtworkModalOpen, setIsArtworkModalOpen] = useState(false);
   const [uploadingArtImage, setUploadingArtImage] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [isReorderingMode, setIsReorderingMode] = useState(false);
 
   // Category state
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
@@ -252,6 +263,95 @@ export const AdminView: React.FC = () => {
     }
   };
 
+  // Reorder Artworks handler
+  const handleMoveArtwork = async (index: number, direction: 'up' | 'down' | 'top' | 'bottom') => {
+    const list = [...(data?.artworks || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    if (direction === 'up' && index > 0) {
+      const temp = list[index];
+      list[index] = list[index - 1];
+      list[index - 1] = temp;
+    } else if (direction === 'down' && index < list.length - 1) {
+      const temp = list[index];
+      list[index] = list[index + 1];
+      list[index + 1] = temp;
+    } else if (direction === 'top' && index > 0) {
+      const [item] = list.splice(index, 1);
+      list.unshift(item);
+    } else if (direction === 'bottom' && index < list.length - 1) {
+      const [item] = list.splice(index, 1);
+      list.push(item);
+    } else {
+      return;
+    }
+
+    try {
+      const orderedIds = list.map(a => a.id);
+      await api.reorderArtworks(orderedIds);
+      await refreshData();
+      showToast('আর্টওয়ার্কের নতুন ক্রম সেভ হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'ক্রম সেভ করতে ব্যর্থ', 'error');
+    }
+  };
+
+  // Set specific numeric rank for artwork
+  const handleSetArtworkExactOrder = async (artId: string, newOrder: number) => {
+    const list = [...(data?.artworks || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    const targetIdx = list.findIndex(a => a.id === artId);
+    if (targetIdx === -1) return;
+    const [item] = list.splice(targetIdx, 1);
+    const clampedIndex = Math.max(0, Math.min(newOrder - 1, list.length));
+    list.splice(clampedIndex, 0, item);
+
+    try {
+      const orderedIds = list.map(a => a.id);
+      await api.reorderArtworks(orderedIds);
+      await refreshData();
+      showToast('ক্রম আপডেট হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update order', 'error');
+    }
+  };
+
+  // Exhibition Reorder
+  const handleMoveExhibition = async (index: number, direction: 'up' | 'down') => {
+    const list = [...(data?.exhibitions || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    if (direction === 'up' && index > 0) {
+      const temp = list[index];
+      list[index] = list[index - 1];
+      list[index - 1] = temp;
+    } else if (direction === 'down' && index < list.length - 1) {
+      const temp = list[index];
+      list[index] = list[index + 1];
+      list[index + 1] = temp;
+    } else {
+      return;
+    }
+    try {
+      const orderedIds = list.map(e => e.id);
+      await api.reorderExhibitions(orderedIds);
+      await refreshData();
+      showToast('এক্সিবিশন ক্রম সেভ হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to reorder exhibitions', 'error');
+    }
+  };
+
+  // Clear all demo exhibitions
+  const handleClearAllDemoExhibitions = async () => {
+    if (!confirm('সতর্কতা: আপনি কি সকল এক্সিবিশন মুছে ফেলতে চান? এরপর আপনি নিজের আসল এক্সিবিশন যোগ করতে পারবেন।')) return;
+    try {
+      const list = [...(data?.exhibitions || [])];
+      for (const ex of list) {
+        await api.deleteExhibition(ex.id);
+      }
+      await refreshData();
+      showToast('সকল এক্সিবিশন মুছে ফেলা হয়েছে', 'info');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clear exhibitions', 'error');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-100 flex flex-col font-sans text-neutral-900">
       {/* Top Bar */}
@@ -408,72 +508,203 @@ export const AdminView: React.FC = () => {
           {/* 1. ARTWORKS TAB */}
           {currentTab === 'artworks' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-100">
                 <div>
-                  <h2 className="text-base font-semibold text-neutral-950">Artworks</h2>
-                  <p className="text-xs text-neutral-400">
-                    Manage cataloged paintings, drawings, sculptures, and digital works
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-neutral-950">Artworks</h2>
+                    <span className="text-[11px] bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded font-mono">
+                      {(data?.artworks || []).length} items
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    আর্টওয়ার্ক আপলোড করুন, ইচ্ছামতো আগে-পরে সাজান (Reorder) এবং ভিডিও যুক্ত করুন
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setEditingArtwork({
-                      year: new Date().getFullYear(),
-                      categorySlug: data?.categories[0]?.slug || 'painting',
-                      images: [],
-                    });
-                    setIsArtworkModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Artwork</span>
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsReorderingMode(!isReorderingMode)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors cursor-pointer border ${
+                      isReorderingMode
+                        ? 'bg-amber-500 text-white border-amber-600 font-medium'
+                        : 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5" />
+                    <span>{isReorderingMode ? 'সাজানো সম্পন্ন' : 'আর্টওয়ার্কের ক্রম পরিবর্তন'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setEditingArtwork({
+                        year: new Date().getFullYear(),
+                        categorySlug: data?.categories[0]?.slug || 'painting',
+                        images: [],
+                      });
+                      setIsArtworkModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>নতুন আর্টওয়ার্ক যোগ করুন</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(data?.artworks || []).map(artwork => (
-                  <div
-                    key={artwork.id}
-                    className="border border-neutral-200 rounded p-3 flex flex-col justify-between hover:border-neutral-400 transition-colors"
-                  >
-                    <div>
-                      <div className="aspect-4/3 bg-neutral-100 mb-3 overflow-hidden rounded">
-                        <img
-                          src={artwork.mainImage}
-                          alt={artwork.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <h3 className="font-medium text-xs text-neutral-950 truncate">
-                        {artwork.title}
-                      </h3>
-                      <p className="text-[11px] text-neutral-400">
-                        {artwork.year} • {artwork.categoryName || artwork.categorySlug}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-neutral-100">
-                      <button
-                        onClick={() => {
-                          setEditingArtwork(artwork);
-                          setIsArtworkModalOpen(true);
-                        }}
-                        className="p-1 text-neutral-500 hover:text-neutral-900"
-                        title="Edit artwork"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteArtwork(artwork.id)}
-                        className="p-1 text-neutral-500 hover:text-red-600"
-                        title="Delete artwork"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+              {isReorderingMode && (
+                <div className="bg-amber-50/70 border border-amber-200 p-3 rounded text-xs text-amber-900 flex items-center justify-between">
+                  <div>
+                    <strong>ক্রম পরিবর্তনের মোড চালু আছে:</strong> যে ছবিটিকে সবার আগে রাখতে চান সেটিতে <strong>⤒ শুরুতে</strong> বা <strong>↑ উপরে</strong> ক্লিক করুন অথবা সরাসরি পজিশন নম্বর লিখুন। গ্যালারি পেজে এই ক্রমেই ছবিগুলো প্রদর্শিত হবে।
                   </div>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setIsReorderingMode(false)}
+                    className="px-2.5 py-1 bg-amber-600 text-white rounded text-[11px] font-medium hover:bg-amber-700 shrink-0 ml-3"
+                  >
+                    ঠিক আছে
+                  </button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...(data?.artworks || [])]
+                  .sort((a, b) => (a.order || 9999) - (b.order || 9999))
+                  .map((artwork, idx, arr) => (
+                    <div
+                      key={artwork.id}
+                      className={`border rounded p-3 flex flex-col justify-between transition-colors bg-white ${
+                        isReorderingMode
+                          ? 'border-amber-300 shadow-xs'
+                          : 'border-neutral-200 hover:border-neutral-400'
+                      }`}
+                    >
+                      <div>
+                        {/* Position badge and video indicator */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-neutral-900 text-white">
+                              #{idx + 1}
+                            </span>
+                            {artwork.videoUrl && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-red-50 text-red-700 px-1.5 py-0.5 rounded font-medium border border-red-200">
+                                <Video className="w-3 h-3" />
+                                <span>Video</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Quick Order Input */}
+                          <div className="flex items-center gap-1 text-[11px] text-neutral-500">
+                            <span>ক্রম:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={arr.length}
+                              defaultValue={idx + 1}
+                              key={`${artwork.id}-${idx}`}
+                              onBlur={e => {
+                                const val = parseInt(e.target.value, 10);
+                                if (!isNaN(val) && val > 0 && val !== idx + 1) {
+                                  handleSetArtworkExactOrder(artwork.id, val);
+                                }
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  const val = parseInt((e.target as HTMLInputElement).value, 10);
+                                  if (!isNaN(val) && val > 0 && val !== idx + 1) {
+                                    handleSetArtworkExactOrder(artwork.id, val);
+                                  }
+                                }
+                              }}
+                              className="w-11 px-1 py-0.5 text-center border border-neutral-300 rounded font-mono text-xs focus:outline-hidden focus:border-neutral-900"
+                              title="সরাসরি পজিশন নম্বর লিখে Enter চাপুন"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="aspect-4/3 bg-neutral-100 mb-3 overflow-hidden rounded relative">
+                          <img
+                            src={artwork.mainImage}
+                            alt={artwork.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <h3 className="font-medium text-xs text-neutral-950 truncate">
+                          {artwork.title}
+                        </h3>
+                        <p className="text-[11px] text-neutral-400">
+                          {artwork.year} • {artwork.categoryName || artwork.categorySlug}
+                        </p>
+                      </div>
+
+                      {/* Reorder arrows and edit/delete actions */}
+                      <div className="flex items-center justify-between gap-1 mt-4 pt-3 border-t border-neutral-100">
+                        {/* Directional buttons */}
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveArtwork(idx, 'top')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 rounded disabled:opacity-20 cursor-pointer"
+                            title="সবার শুরুতে নিয়ে যান (First)"
+                          >
+                            <ChevronsUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveArtwork(idx, 'up')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 rounded disabled:opacity-20 cursor-pointer"
+                            title="এক ধাপ উপরে (Move Up)"
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === arr.length - 1}
+                            onClick={() => handleMoveArtwork(idx, 'down')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 rounded disabled:opacity-20 cursor-pointer"
+                            title="এক ধাপ নিচে (Move Down)"
+                          >
+                            <ArrowDown className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === arr.length - 1}
+                            onClick={() => handleMoveArtwork(idx, 'bottom')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 rounded disabled:opacity-20 cursor-pointer"
+                            title="সবার শেষে নিয়ে যান (Last)"
+                          >
+                            <ChevronsDown className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Edit and Delete */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingArtwork(artwork);
+                              setIsArtworkModalOpen(true);
+                            }}
+                            className="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded cursor-pointer"
+                            title="Edit artwork"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteArtwork(artwork.id)}
+                            className="p-1 text-neutral-500 hover:text-red-600 hover:bg-neutral-100 rounded cursor-pointer"
+                            title="Delete artwork"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -539,68 +770,149 @@ export const AdminView: React.FC = () => {
           {/* 3. EXHIBITIONS TAB */}
           {currentTab === 'exhibitions' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-100">
                 <div>
-                  <h2 className="text-base font-semibold text-neutral-950">Exhibitions</h2>
-                  <p className="text-xs text-neutral-400">
-                    Solo and group exhibition history
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-neutral-950">Exhibitions</h2>
+                    <span className="text-[11px] bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded font-mono">
+                      {(data?.exhibitions || []).length} items
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    এক্সিবিশন যোগ করুন, এডিট করুন, মুছুন বা ক্রম সাজান
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setEditingExhibition({
-                      year: new Date().getFullYear(),
-                      type: 'Solo',
-                    });
-                    setIsExhibitionModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Exhibition</span>
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {(data?.exhibitions || []).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllDemoExhibitions}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 bg-red-50/40 hover:bg-red-50 rounded text-xs transition-colors cursor-pointer"
+                      title="সকল ডেমো এক্সিবিশন এক ক্লিকে মুছে ফেলুন"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>সকল ডেমো মুছুন</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setEditingExhibition({
+                        year: new Date().getFullYear(),
+                        type: 'Solo',
+                        title: '',
+                        venue: '',
+                        location: '',
+                      });
+                      setIsExhibitionModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>নতুন এক্সিবিশন যোগ করুন</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {(data?.exhibitions || []).map(ex => (
-                  <div
-                    key={ex.id}
-                    className="border border-neutral-200 rounded p-4 flex items-center justify-between"
+              {(data?.exhibitions || []).length === 0 ? (
+                <div className="py-16 text-center border-2 border-dashed border-neutral-200 rounded-lg p-6 bg-white">
+                  <Calendar className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
+                  <p className="text-xs text-neutral-700 font-medium">কোনো এক্সিবিশন যোগ করা নেই</p>
+                  <p className="text-[11px] text-neutral-400 mt-1 mb-3">
+                    আপনার একক (Solo) বা যৌথ (Group) প্রদর্শনীর তথ্য যোগ করতে উপরের বাটনে ক্লিক করুন
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingExhibition({
+                        year: new Date().getFullYear(),
+                        type: 'Solo',
+                        title: '',
+                        venue: '',
+                      });
+                      setIsExhibitionModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-neutral-950 text-white text-xs rounded hover:bg-neutral-800 cursor-pointer"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-medium text-neutral-500">
-                          {ex.year}
-                        </span>
-                        <span className="text-xs bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                          {ex.type}
-                        </span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>প্রথম এক্সিবিশন যোগ করুন</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {[...(data?.exhibitions || [])]
+                    .sort((a, b) => (a.order || 9999) - (b.order || 9999))
+                    .map((ex, idx, arr) => (
+                      <div
+                        key={ex.id}
+                        className="border border-neutral-200 rounded p-4 flex items-center justify-between bg-white hover:border-neutral-300 transition-colors"
+                      >
+                        <div className="min-w-0 pr-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono font-medium text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-xs font-mono font-bold text-neutral-800">
+                              {ex.year}
+                            </span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-medium ${
+                              ex.type?.toLowerCase() === 'solo'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-neutral-100 text-neutral-600'
+                            }`}>
+                              {ex.type}
+                            </span>
+                          </div>
+                          <h3 className="font-medium text-xs text-neutral-950 mt-1.5 truncate">{ex.title}</h3>
+                          <p className="text-[11px] text-neutral-600 mt-0.5">
+                            {ex.venue} {ex.location && `• ${ex.location}`}
+                            {ex.curator && ` • Curated by ${ex.curator}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Reorder arrows */}
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveExhibition(idx, 'up')}
+                            className="p-1 text-neutral-400 hover:text-neutral-900 disabled:opacity-20 cursor-pointer"
+                            title="উপরে নিন"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === arr.length - 1}
+                            onClick={() => handleMoveExhibition(idx, 'down')}
+                            className="p-1 text-neutral-400 hover:text-neutral-900 disabled:opacity-20 cursor-pointer"
+                            title="নিচে নিন"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setEditingExhibition(ex);
+                              setIsExhibitionModalOpen(true);
+                            }}
+                            className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded cursor-pointer"
+                            title="এডিট করুন"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteExhibition(ex.id)}
+                            className="p-1.5 text-neutral-500 hover:text-red-600 hover:bg-neutral-100 rounded cursor-pointer"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <h3 className="font-medium text-xs text-neutral-950 mt-1">{ex.title}</h3>
-                      <p className="text-[11px] text-neutral-600">
-                        {ex.venue} {ex.location && `• ${ex.location}`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setEditingExhibition(ex);
-                          setIsExhibitionModalOpen(true);
-                        }}
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteExhibition(ex.id)}
-                        className="p-1.5 text-neutral-500 hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -673,65 +985,7 @@ export const AdminView: React.FC = () => {
 
           {/* 5. CV TAB */}
           {currentTab === 'cv' && (
-            <div className="space-y-6 max-w-xl text-xs">
-              <div className="pb-4 border-b border-neutral-100">
-                <h2 className="text-base font-semibold text-neutral-950">Curriculum Vitae</h2>
-                <p className="text-xs text-neutral-400">
-                  Upload or replace the downloadable PDF version of the artist CV
-                </p>
-              </div>
-
-              {data?.cv ? (
-                <div className="border border-neutral-200 rounded p-4 flex items-center justify-between bg-neutral-50">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-6 h-6 text-neutral-500" />
-                    <div>
-                      <p className="font-medium text-neutral-900">{data.cv.filename}</p>
-                      <p className="text-[11px] text-neutral-400">
-                        Updated {new Date(data.cv.updatedAt || data.cv.uploadedAt || Date.now()).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={data.cv.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 border border-neutral-200 bg-white rounded hover:bg-neutral-100 transition-colors"
-                    >
-                      Download
-                    </a>
-                    <button
-                      onClick={handleDeleteCV}
-                      className="p-1.5 text-neutral-400 hover:text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-neutral-200 rounded-lg p-8 text-center">
-                  <FileText className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
-                  <p className="text-neutral-600 font-medium">No CV PDF uploaded</p>
-                  <p className="text-neutral-400 text-[11px] mt-1">
-                    Upload a PDF file to enable the Download CV button on the site
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-neutral-700 font-medium mb-2">
-                  Upload New CV (PDF)
-                </label>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={handleCVUpload}
-                  disabled={uploadingCV}
-                  className="block w-full text-xs text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-medium file:bg-neutral-950 file:text-white hover:file:bg-neutral-800 cursor-pointer"
-                />
-              </div>
-            </div>
+            <CVManager showToast={showToast} onSaved={refreshData} />
           )}
 
           {/* COVER & HERO STUDIO TAB */}
@@ -871,6 +1125,9 @@ export const AdminView: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Cloudinary & Image/Video Hosting Card */}
+              <CloudinarySettingsCard showToast={showToast} />
 
               {/* Security & Password Card */}
               <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-lg flex items-center justify-between">
@@ -1097,6 +1354,75 @@ export const AdminView: React.FC = () => {
                   onChange={e => setEditingArtwork(a => ({ ...a, description: e.target.value }))}
                   className="w-full border border-neutral-200 p-2 rounded"
                 />
+              </div>
+
+              {/* Video upload and URL section */}
+              <div>
+                <label className="block text-neutral-700 font-medium mb-1">
+                  Artwork Video (ভিডিও আপলোড বা লিংক - ঐচ্ছিক)
+                </label>
+                <div className="space-y-3 bg-neutral-50 p-3 rounded border border-neutral-200">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={editingArtwork?.videoUrl || ''}
+                      onChange={e => setEditingArtwork(a => ({ ...a, videoUrl: e.target.value }))}
+                      className="flex-1 border border-neutral-200 p-2 rounded bg-white text-xs font-mono"
+                      placeholder="https://... Cloudinary video / MP4 / YouTube / Vimeo লিংক"
+                    />
+                    <label className="bg-neutral-900 text-white hover:bg-neutral-800 px-3 py-2 rounded flex items-center justify-center gap-1.5 cursor-pointer text-xs shrink-0">
+                      <Video className="w-3.5 h-3.5" />
+                      <span>{uploadingVideo ? `ভিডিও আপলোড হচ্ছে (${videoProgress}%)` : 'ভিডিও ফাইল আপলোড'}</span>
+                      <input
+                        type="file"
+                        accept="video/*"
+                        disabled={uploadingVideo}
+                        className="hidden"
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            setUploadingVideo(true);
+                            setVideoProgress(0);
+                            const res = await api.uploadFile(file, p => setVideoProgress(p));
+                            setEditingArtwork(a => ({
+                              ...a,
+                              videoUrl: res.url,
+                              mediaType: 'video',
+                            }));
+                            showToast('ভিডিও সফলভাবে আপলোড হয়েছে!', 'success');
+                          } catch (err: any) {
+                            showToast(err.message || 'ভিডিও আপলোড ব্যর্থ', 'error');
+                          } finally {
+                            setUploadingVideo(false);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {editingArtwork?.videoUrl && (
+                    <div className="pt-2 border-t border-neutral-200/60">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-medium text-neutral-600">ভিডিও প্রিভিউ:</span>
+                        <button
+                          type="button"
+                          onClick={() => setEditingArtwork(a => ({ ...a, videoUrl: '' }))}
+                          className="text-[11px] text-red-600 hover:underline cursor-pointer"
+                        >
+                          ভিডিও সরান
+                        </button>
+                      </div>
+                      <div className="max-w-sm aspect-video bg-black rounded overflow-hidden">
+                        <video
+                          src={editingArtwork.videoUrl}
+                          controls
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">

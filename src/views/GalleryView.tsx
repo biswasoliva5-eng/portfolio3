@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Artwork } from '../types';
+import { Video } from 'lucide-react';
 
 interface GalleryViewProps {
   categorySlug: string;
@@ -14,7 +15,9 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ categorySlug }) => {
   }, [data?.categories, categorySlug]);
 
   const artworks = useMemo(() => {
-    return (data?.artworks || []).filter(a => a.categorySlug === categorySlug);
+    return (data?.artworks || [])
+      .filter(a => a.categorySlug === categorySlug)
+      .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
   }, [data?.artworks, categorySlug]);
 
   return (
@@ -50,6 +53,12 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ categorySlug }) => {
                   loading="lazy"
                   className="w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-102"
                 />
+                {artwork.videoUrl && (
+                  <span className="absolute top-2.5 right-2.5 bg-black/75 backdrop-blur-xs text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-mono tracking-wider">
+                    <Video className="w-3 h-3 text-red-400" />
+                    <span>Video</span>
+                  </span>
+                )}
               </div>
 
               <div className="space-y-0.5 text-xs text-neutral-600">

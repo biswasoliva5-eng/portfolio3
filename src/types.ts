@@ -146,6 +146,9 @@ export interface SiteSettings {
   coverFitMode?: 'cover' | 'contain' | 'auto';
   coverAspectRatio?: string;
   customYears?: string[];
+  cloudinaryCloudName?: string;
+  cloudinaryUploadPreset?: string;
+  imgbbApiKey?: string;
 }
 
 export interface ContactMessage {

@@ -21,6 +21,7 @@ import {
   setLocalAdminUsername,
 } from '../data/defaultPortfolioData';
 import { compressImage } from '../utils/imageCompressor';
+import { smartMediaUpload } from '../utils/cloudUploader';
 import {
   getFirestorePortfolioData,
   saveFirestoreSettings,
@@ -867,53 +868,30 @@ export const api = {
   },
 
   // Uploads
-  uploadFile: async (file: File): Promise<{ url: string; filename: string; size: number; fileUrl?: string }> => {
-    let fileToUpload = file;
-    let fallbackDataUrl = '';
-
-    if (file.type.startsWith('image/')) {
-      try {
-        const compressed = await compressImage(file, 2048, 2048, 0.85);
-        fileToUpload = compressed.file;
-        fallbackDataUrl = compressed.dataUrl;
-      } catch (e) {
-        console.warn('Image compression note:', e);
-      }
-    }
-
-    // If static hosting is already known, return compressed data URL directly
-    if (isStaticHost() && fallbackDataUrl) {
-      return {
-        url: fallbackDataUrl,
-        filename: fileToUpload.name,
-        size: fileToUpload.size,
-        fileUrl: fallbackDataUrl,
-      };
-    }
-
+  uploadFile: async (
+    file: File,
+    onProgress?: (percent: number) => void
+  ): Promise<{ url: string; filename: string; size: number; fileUrl?: string; isCloud?: boolean }> => {
+    // If it's on static host or anywhere, smartMediaUpload handles Cloudinary, ImgBB, server, or IndexedDB fallback
     try {
-      const formData = new FormData();
-      formData.append('file', fileToUpload);
-      const res = await request<{ url: string; filename: string; size: number }>('/api/admin/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      return { ...res, fileUrl: res.url };
+      const result = await smartMediaUpload(file, undefined, onProgress);
+      return {
+        url: result.url,
+        filename: result.filename,
+        size: result.size,
+        fileUrl: result.url,
+        isCloud: result.isCloud,
+      };
     } catch (err: any) {
-      if (isStaticHostingError(err) || fallbackDataUrl) {
-        if (!fallbackDataUrl) {
-          fallbackDataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(new Error('Failed to read upload file'));
-            reader.readAsDataURL(fileToUpload);
-          });
-        }
+      console.error('smartMediaUpload error, attempting basic fallback:', err);
+      // Fallback
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, 1200, 1200, 0.7);
         return {
-          url: fallbackDataUrl,
-          filename: fileToUpload.name,
-          size: fileToUpload.size,
-          fileUrl: fallbackDataUrl,
+          url: compressed.dataUrl,
+          filename: file.name,
+          size: compressed.file.size,
+          fileUrl: compressed.dataUrl,
         };
       }
       throw err;

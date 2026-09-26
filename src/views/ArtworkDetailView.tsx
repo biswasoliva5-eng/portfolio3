@@ -1,17 +1,33 @@
 import React, { useState, useMemo } from 'react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Lightbox } from '../components/Lightbox';
-import { ArrowLeft, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Maximize2, ChevronLeft, ChevronRight, Video, Image as ImageIcon, Play } from 'lucide-react';
 import { Artwork } from '../types';
 
 interface ArtworkDetailViewProps {
   slug: string;
 }
 
+function getEmbedVideoUrl(url?: string): { isEmbed: boolean; embedUrl?: string } {
+  if (!url) return { isEmbed: false };
+  // YouTube
+  const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+  if (ytMatch && ytMatch[1]) {
+    return { isEmbed: true, embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=0&rel=0` };
+  }
+  // Vimeo
+  const vimeoMatch = url.match(/(?:vimeo\.com\/)(\d+)/i);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return { isEmbed: true, embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}` };
+  }
+  return { isEmbed: false };
+}
+
 export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) => {
   const { data, navigate, formatUrl } = usePortfolio();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [activeMediaTab, setActiveMediaTab] = useState<'image' | 'video'>('image');
 
   const artworks = data?.artworks || [];
   const currentIndex = artworks.findIndex(a => a.slug === slug);
@@ -85,43 +101,129 @@ export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) =>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16">
-        {/* Left: Artwork Image Presentation */}
+        {/* Left: Artwork Image / Video Presentation */}
         <div className="lg:col-span-8 space-y-4">
-          <div
-            className="relative bg-neutral-50 overflow-hidden cursor-zoom-in group"
-            onClick={() => setIsLightboxOpen(true)}
-          >
-            <img
-              src={activeImage?.url || artwork.mainImage}
-              alt={activeImage?.alt || artwork.title}
-              className="w-full h-auto max-h-[78vh] object-contain mx-auto"
-            />
-            <button
-              type="button"
-              className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-xs p-2 text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity hover:text-neutral-950 shadow-xs"
-              title="Expand full screen"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Thumbnails if multiple images */}
-          {images.length > 1 && (
-            <div className="flex items-center gap-2 overflow-x-auto py-2">
-              {images.map((img, idx) => (
-                <button
-                  key={img.id || idx}
-                  onClick={() => setSelectedImageIndex(idx)}
-                  className={`w-16 h-16 shrink-0 border overflow-hidden transition-all cursor-pointer ${
-                    selectedImageIndex === idx
-                      ? 'border-neutral-950 opacity-100'
-                      : 'border-transparent opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <img src={img.url} alt="" className="w-full h-full object-cover" />
-                </button>
-              ))}
+          {/* Media Switcher Tabs if Video exists */}
+          {artwork.videoUrl && (
+            <div className="flex items-center gap-2 border-b border-neutral-200 pb-2">
+              <button
+                type="button"
+                onClick={() => setActiveMediaTab('image')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-colors cursor-pointer ${
+                  activeMediaTab === 'image'
+                    ? 'bg-neutral-950 text-white font-medium'
+                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>Photos ({images.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveMediaTab('video')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-colors cursor-pointer ${
+                  activeMediaTab === 'video'
+                    ? 'bg-neutral-950 text-white font-medium'
+                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                }`}
+              >
+                <Video className="w-3.5 h-3.5 text-red-500" />
+                <span>Video Documentation</span>
+              </button>
             </div>
+          )}
+
+          {/* Video Player */}
+          {artwork.videoUrl && activeMediaTab === 'video' ? (
+            <div className="space-y-3">
+              <div className="relative aspect-video bg-black rounded overflow-hidden shadow-xs">
+                {(() => {
+                  const { isEmbed, embedUrl } = getEmbedVideoUrl(artwork.videoUrl);
+                  if (isEmbed && embedUrl) {
+                    return (
+                      <iframe
+                        src={embedUrl}
+                        title={artwork.videoTitle || artwork.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="w-full h-full border-0"
+                      />
+                    );
+                  }
+                  return (
+                    <video
+                      src={artwork.videoUrl}
+                      controls
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  );
+                })()}
+              </div>
+              {artwork.videoTitle && (
+                <p className="text-xs text-neutral-500 font-light italic">
+                  {artwork.videoTitle}
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Image Presentation */
+            <>
+              <div
+                className="relative bg-neutral-50 overflow-hidden cursor-zoom-in group"
+                onClick={() => setIsLightboxOpen(true)}
+              >
+                <img
+                  src={activeImage?.url || artwork.mainImage}
+                  alt={activeImage?.alt || artwork.title}
+                  className="w-full h-auto max-h-[78vh] object-contain mx-auto"
+                />
+                <button
+                  type="button"
+                  className="absolute bottom-4 right-4 bg-white/80 backdrop-blur-xs p-2 text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity hover:text-neutral-950 shadow-xs"
+                  title="Expand full screen"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Thumbnails if multiple images */}
+              {images.length > 1 && (
+                <div className="flex items-center gap-2 overflow-x-auto py-2">
+                  {images.map((img, idx) => (
+                    <button
+                      key={img.id || idx}
+                      onClick={() => {
+                        setSelectedImageIndex(idx);
+                        setActiveMediaTab('image');
+                      }}
+                      className={`w-16 h-16 shrink-0 border overflow-hidden transition-all cursor-pointer ${
+                        selectedImageIndex === idx && activeMediaTab === 'image'
+                          ? 'border-neutral-950 opacity-100'
+                          : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={img.url} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                  {artwork.videoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveMediaTab('video')}
+                      className={`w-16 h-16 shrink-0 border overflow-hidden transition-all cursor-pointer bg-neutral-900 text-white flex flex-col items-center justify-center gap-1 ${
+                        activeMediaTab === 'video'
+                          ? 'border-neutral-950 opacity-100'
+                          : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
+                      title="Watch video"
+                    >
+                      <Play className="w-4 h-4 text-white" />
+                      <span className="text-[9px] uppercase tracking-wider font-mono">Video</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 

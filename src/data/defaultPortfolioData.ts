@@ -487,12 +487,12 @@ export function getLocalPortfolioData(): PortfolioData {
     }
     const parsed = JSON.parse(raw);
     return {
-      settings: { ...defaultSettings, ...parsed.settings },
-      categories: parsed.categories || defaultCategories,
-      artworks: parsed.artworks || defaultArtworks,
+      settings: { ...defaultSettings, ...(parsed.settings || {}) },
+      categories: Array.isArray(parsed.categories) ? parsed.categories : defaultCategories,
+      artworks: Array.isArray(parsed.artworks) ? parsed.artworks : defaultArtworks,
       years: parsed.years || defaultPortfolioData.years,
-      exhibitions: parsed.exhibitions || defaultExhibitions,
-      about: { ...defaultAbout, ...parsed.about },
+      exhibitions: Array.isArray(parsed.exhibitions) ? parsed.exhibitions : defaultExhibitions,
+      about: { ...defaultAbout, ...(parsed.about || {}) },
       cv: parsed.cv !== undefined ? parsed.cv : defaultCV,
       socialLinks: parsed.socialLinks || defaultSocialLinks,
       messages: parsed.messages || defaultMessages,
@@ -513,7 +513,28 @@ export function saveLocalPortfolioData(data: PortfolioData): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (err) {
-    console.error('Failed to save portfolio data to localStorage:', err);
+    console.warn('Failed to save full portfolio data to localStorage (quota limit reached). Pruning large media blobs...', err);
+    try {
+      // Safe fallback: clone data and replace any data:image base64 strings with placeholders if over quota
+      const safeData = {
+        ...data,
+        artworks: (data.artworks || []).map(a => ({
+          ...a,
+          mainImage: a.mainImage?.startsWith('data:') && a.mainImage.length > 50000
+            ? 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=1200&auto=format&fit=crop'
+            : a.mainImage,
+          images: (a.images || []).map(img => ({
+            ...img,
+            url: img.url?.startsWith('data:') && img.url.length > 50000
+              ? 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=1200&auto=format&fit=crop'
+              : img.url,
+          })),
+        })),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(safeData));
+    } catch (innerErr) {
+      console.error('Critical quota error writing to localStorage:', innerErr);
+    }
   }
 }
 
