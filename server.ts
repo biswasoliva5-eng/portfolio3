@@ -28,7 +28,31 @@ async function startServer() {
   if (!fs.existsSync(uploadsPath)) {
     fs.mkdirSync(uploadsPath, { recursive: true });
   }
+
+  // Handle uploaded files explicitly for both root and /portfolio3 base
+  const sendUploadedFile = (req: Request, res: Response, next: express.NextFunction) => {
+    const rawFile = req.params[0] || req.path.replace(/^\/(?:portfolio3\/)?uploads\/?/, '');
+    const cleanName = path.basename(rawFile);
+    const targetFile = path.join(uploadsPath, cleanName);
+
+    if (fs.existsSync(targetFile)) {
+      return res.sendFile(targetFile);
+    }
+    // Return a clean 404 instead of letting Vite serve index.html (which causes image decode error)
+    return res.status(404).type('image/svg+xml').send(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+        <rect width="400" height="300" fill="#f5f5f5"/>
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#888888">
+          Image Not Found
+        </text>
+      </svg>
+    `);
+  };
+
+  app.get('/uploads/*', sendUploadedFile);
+  app.get('/portfolio3/uploads/*', sendUploadedFile);
   app.use('/uploads', express.static(uploadsPath));
+  app.use('/portfolio3/uploads', express.static(uploadsPath));
 
   // -------------------------------------------------------------
   // Public API Endpoints

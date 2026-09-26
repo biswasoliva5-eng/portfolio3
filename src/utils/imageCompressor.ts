@@ -16,8 +16,15 @@ export async function compressImage(
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
 
+    const cleanup = () => {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        // ignore
+      }
+    };
+
     img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
       let { width, height } = img;
 
       if (width > maxWidth || height > maxHeight) {
@@ -27,15 +34,20 @@ export async function compressImage(
       }
 
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = Math.max(1, width);
+      canvas.height = Math.max(1, height);
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        resolve({ file, dataUrl: objectUrl });
+        cleanup();
+        const reader = new FileReader();
+        reader.onload = () => resolve({ file, dataUrl: reader.result as string });
+        reader.readAsDataURL(file);
         return;
       }
 
       ctx.drawImage(img, 0, 0, width, height);
+      cleanup();
+
       const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
       const dataUrl = canvas.toDataURL(mimeType, quality);
 
@@ -57,7 +69,7 @@ export async function compressImage(
     };
 
     img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
+      cleanup();
       const reader = new FileReader();
       reader.onload = () => resolve({ file, dataUrl: reader.result as string });
       reader.onerror = () => reject(new Error('Failed to load image'));

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Artwork } from '../types';
 import { Video } from 'lucide-react';
+import { ArtworkImage } from '../components/common/ArtworkImage';
 
 interface GalleryViewProps {
   categorySlug: string;
@@ -47,7 +48,7 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ categorySlug }) => {
               onClick={() => navigate(`/artwork/${artwork.slug}`)}
             >
               <div className="relative aspect-4/5 overflow-hidden bg-neutral-100 mb-3">
-                <img
+                <ArtworkImage
                   src={artwork.mainImage}
                   alt={artwork.title}
                   loading="lazy"

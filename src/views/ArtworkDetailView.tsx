@@ -3,6 +3,7 @@ import { usePortfolio } from '../context/PortfolioContext';
 import { Lightbox } from '../components/Lightbox';
 import { ArrowLeft, Maximize2, ChevronLeft, ChevronRight, Video, Image as ImageIcon, Play } from 'lucide-react';
 import { Artwork } from '../types';
+import { ArtworkImage } from '../components/common/ArtworkImage';
 
 interface ArtworkDetailViewProps {
   slug: string;
@@ -173,7 +174,7 @@ export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) =>
                 className="relative bg-neutral-50 overflow-hidden cursor-zoom-in group"
                 onClick={() => setIsLightboxOpen(true)}
               >
-                <img
+                <ArtworkImage
                   src={activeImage?.url || artwork.mainImage}
                   alt={activeImage?.alt || artwork.title}
                   className="w-full h-auto max-h-[78vh] object-contain mx-auto"

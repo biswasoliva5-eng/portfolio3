@@ -477,16 +477,20 @@ const STORAGE_KEY = 'oliva_biswas_portfolio_v2';
 const ADMIN_PASS_KEY = 'oliva_biswas_admin_pass';
 const ADMIN_USERNAME_KEY = 'oliva_biswas_admin_username_cfg';
 
+let inMemoryDataCache: PortfolioData | null = null;
+
 export function getLocalPortfolioData(): PortfolioData {
   if (typeof window === 'undefined') return defaultPortfolioData;
+  if (inMemoryDataCache) return inMemoryDataCache;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       saveLocalPortfolioData(defaultPortfolioData);
+      inMemoryDataCache = defaultPortfolioData;
       return defaultPortfolioData;
     }
     const parsed = JSON.parse(raw);
-    return {
+    const data: PortfolioData = {
       settings: { ...defaultSettings, ...(parsed.settings || {}) },
       categories: Array.isArray(parsed.categories) ? parsed.categories : defaultCategories,
       artworks: Array.isArray(parsed.artworks) ? parsed.artworks : defaultArtworks,
@@ -498,6 +502,8 @@ export function getLocalPortfolioData(): PortfolioData {
       messages: parsed.messages || defaultMessages,
       inquiries: parsed.inquiries || parsed.messages || defaultMessages,
     };
+    inMemoryDataCache = data;
+    return data;
   } catch (err) {
     console.error('Failed to parse local portfolio data:', err);
     return defaultPortfolioData;
@@ -509,31 +515,24 @@ export async function getLocalPortfolioDataAsync(): Promise<PortfolioData> {
 }
 
 export function saveLocalPortfolioData(data: PortfolioData): void {
+  inMemoryDataCache = data;
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (err) {
-    console.warn('Failed to save full portfolio data to localStorage (quota limit reached). Pruning large media blobs...', err);
+    console.warn('LocalStorage quota reached. Compressing storage payload while retaining data in memory...', err);
     try {
-      // Safe fallback: clone data and replace any data:image base64 strings with placeholders if over quota
+      // If quota reached, keep lightweight references in localStorage
+      // All artwork titles, order, metadata remain intact; only shrink if necessary
       const safeData = {
         ...data,
-        artworks: (data.artworks || []).map(a => ({
-          ...a,
-          mainImage: a.mainImage?.startsWith('data:') && a.mainImage.length > 50000
-            ? 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=1200&auto=format&fit=crop'
-            : a.mainImage,
-          images: (a.images || []).map(img => ({
-            ...img,
-            url: img.url?.startsWith('data:') && img.url.length > 50000
-              ? 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=1200&auto=format&fit=crop'
-              : img.url,
-          })),
-        })),
+        messages: (data.messages || []).slice(0, 5),
+        inquiries: (data.inquiries || []).slice(0, 5),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(safeData));
     } catch (innerErr) {
-      console.error('Critical quota error writing to localStorage:', innerErr);
+      // Keep running with in-memory cache
+      console.warn('LocalStorage full, continuing with in-memory & Firestore state:', innerErr);
     }
   }
 }

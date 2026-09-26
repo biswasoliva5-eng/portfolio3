@@ -32,52 +32,135 @@ function getDb() {
 export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData> | null> {
   const db = getDb();
   if (!db) return null;
+
+  let settings: SiteSettings | undefined;
+  let about: AboutContent | undefined;
+  let cv: CVDoc | null = null;
+  let socialLinks: SocialLink[] | undefined;
+  const artworks: Artwork[] = [];
+  const categories: Category[] = [];
+  const exhibitions: Exhibition[] = [];
+  const inquiries: ContactMessage[] = [];
+
+  // 1. Fetch site settings safely
   try {
-    const settingsSnap = await getDoc(doc(db, 'portfolio', 'settings'));
-    const aboutSnap = await getDoc(doc(db, 'portfolio', 'about'));
-    const cvSnap = await getDoc(doc(db, 'portfolio', 'cv'));
-    const socialSnap = await getDoc(doc(db, 'portfolio', 'socialLinks'));
-
-    const artworksSnap = await getDocs(collection(db, 'artworks'));
-    const categoriesSnap = await getDocs(collection(db, 'categories'));
-    const exhibitionsSnap = await getDocs(collection(db, 'exhibitions'));
-    const inquiriesSnap = await getDocs(collection(db, 'inquiries'));
-
-    const artworks: Artwork[] = [];
-    artworksSnap.forEach(d => artworks.push(d.data() as Artwork));
-
-    const categories: Category[] = [];
-    categoriesSnap.forEach(d => categories.push(d.data() as Category));
-
-    const exhibitions: Exhibition[] = [];
-    exhibitionsSnap.forEach(d => exhibitions.push(d.data() as Exhibition));
-
-    const inquiries: ContactMessage[] = [];
-    inquiriesSnap.forEach(d => inquiries.push(d.data() as ContactMessage));
-
-    const isInitialized = settingsSnap.exists() || aboutSnap.exists();
-
-    return {
-      settings: settingsSnap.exists() ? (settingsSnap.data() as SiteSettings) : undefined,
-      about: aboutSnap.exists() ? (aboutSnap.data() as AboutContent) : undefined,
-      cv: cvSnap.exists() ? (cvSnap.data() as CVDoc) : null,
-      socialLinks: socialSnap.exists() ? (socialSnap.data().items as SocialLink[]) : undefined,
-      artworks: artworks.length > 0 ? artworks : (isInitialized ? [] : undefined),
-      categories: categories.length > 0 ? categories : (isInitialized ? [] : undefined),
-      exhibitions: exhibitions.length > 0 ? exhibitions : (isInitialized ? [] : undefined),
-      inquiries: inquiries.length > 0 ? inquiries : undefined,
-      messages: inquiries.length > 0 ? inquiries : undefined,
-    };
+    const sSnap = await getDoc(doc(db, 'site_settings', 'settings'));
+    if (sSnap.exists()) {
+      settings = sSnap.data() as SiteSettings;
+    } else {
+      const pSnap = await getDoc(doc(db, 'portfolio', 'settings'));
+      if (pSnap.exists()) settings = pSnap.data() as SiteSettings;
+    }
   } catch (err) {
-    console.warn('Firestore fetch portfolio error:', err);
-    return null;
+    // try fallback
+    try {
+      const pSnap = await getDoc(doc(db, 'portfolio', 'settings'));
+      if (pSnap.exists()) settings = pSnap.data() as SiteSettings;
+    } catch {}
   }
+
+  // 2. Fetch about content safely
+  try {
+    const aSnap = await getDoc(doc(db, 'about', 'main'));
+    if (aSnap.exists()) {
+      about = aSnap.data() as AboutContent;
+    } else {
+      const pSnap = await getDoc(doc(db, 'portfolio', 'about'));
+      if (pSnap.exists()) about = pSnap.data() as AboutContent;
+    }
+  } catch {
+    try {
+      const pSnap = await getDoc(doc(db, 'portfolio', 'about'));
+      if (pSnap.exists()) about = pSnap.data() as AboutContent;
+    } catch {}
+  }
+
+  // 3. Fetch CV safely
+  try {
+    const cvSnap = await getDoc(doc(db, 'about', 'cv'));
+    if (cvSnap.exists()) {
+      cv = cvSnap.data() as CVDoc;
+    } else {
+      const pSnap = await getDoc(doc(db, 'portfolio', 'cv'));
+      if (pSnap.exists()) cv = pSnap.data() as CVDoc;
+    }
+  } catch {}
+
+  // 4. Fetch social links safely
+  try {
+    const socSnap = await getDoc(doc(db, 'site_settings', 'socialLinks'));
+    if (socSnap.exists()) {
+      socialLinks = (socSnap.data().items as SocialLink[]) || [];
+    } else {
+      const pSnap = await getDoc(doc(db, 'portfolio', 'socialLinks'));
+      if (pSnap.exists()) socialLinks = (pSnap.data().items as SocialLink[]) || [];
+    }
+  } catch {}
+
+  // 5. Fetch artworks safely (critical for user photos)
+  try {
+    const artworksSnap = await getDocs(collection(db, 'artworks'));
+    artworksSnap.forEach(d => {
+      const art = d.data() as Artwork;
+      artworks.push(art);
+    });
+  } catch (artErr) {
+    console.warn('Firestore fetch artworks error:', artErr);
+  }
+
+  // 6. Fetch categories safely
+  try {
+    const categoriesSnap = await getDocs(collection(db, 'categories'));
+    categoriesSnap.forEach(d => categories.push(d.data() as Category));
+  } catch (catErr) {
+    console.warn('Firestore fetch categories error:', catErr);
+  }
+
+  // 7. Fetch exhibitions safely
+  try {
+    const exhibitionsSnap = await getDocs(collection(db, 'exhibitions'));
+    exhibitionsSnap.forEach(d => exhibitions.push(d.data() as Exhibition));
+  } catch (exErr) {
+    console.warn('Firestore fetch exhibitions error:', exErr);
+  }
+
+  // 8. Fetch inquiries safely
+  try {
+    const inquiriesSnap = await getDocs(collection(db, 'inquiries'));
+    inquiriesSnap.forEach(d => inquiries.push(d.data() as ContactMessage));
+  } catch {}
+
+  const hasAnyData =
+    !!settings ||
+    !!about ||
+    artworks.length > 0 ||
+    categories.length > 0 ||
+    exhibitions.length > 0;
+
+  if (!hasAnyData) return null;
+
+  return {
+    settings,
+    about,
+    cv,
+    socialLinks,
+    artworks: artworks.length > 0 ? artworks : undefined,
+    categories: categories.length > 0 ? categories : undefined,
+    exhibitions: exhibitions.length > 0 ? exhibitions : undefined,
+    inquiries: inquiries.length > 0 ? inquiries : undefined,
+    messages: inquiries.length > 0 ? inquiries : undefined,
+  };
 }
 
 export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'portfolio', 'settings'), settings, { merge: true });
+  try {
+    await setDoc(doc(db, 'site_settings', 'settings'), settings, { merge: true });
+  } catch {}
+  try {
+    await setDoc(doc(db, 'portfolio', 'settings'), settings, { merge: true });
+  } catch {}
 }
 
 export async function saveFirestoreArtwork(artwork: Artwork) {

@@ -109,10 +109,17 @@ export function getStoredUsername(): string | null {
 function isStaticHostingError(err: any): boolean {
   if (detectedStaticHost === true) return true;
   if (!err) return false;
+  const token = getStoredToken();
+  if (token && token.startsWith('static_auth_')) {
+    detectedStaticHost = true;
+    return true;
+  }
   const msg = (err.message || String(err)).toLowerCase();
   const isMatch = (
     msg.includes('404') ||
     msg.includes('405') ||
+    msg.includes('401') ||
+    msg.includes('unauthorized') ||
     msg.includes('method not allowed') ||
     msg.includes('not found') ||
     msg.includes('html') ||
@@ -171,11 +178,20 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Public Data
   getPublicData: async (): Promise<PortfolioData> => {
+    // On static hosting (like GitHub Pages) or fallback
     if (isStaticHost()) {
       try {
         const fsData = await getFirestorePortfolioData();
-        if (fsData && fsData.settings) {
-          const merged = { ...getLocalPortfolioData(), ...fsData } as PortfolioData;
+        if (fsData && (fsData.artworks || fsData.settings || fsData.categories)) {
+          const local = getLocalPortfolioData();
+          const merged: PortfolioData = {
+            ...local,
+            ...fsData,
+            settings: fsData.settings ? { ...local.settings, ...fsData.settings } : local.settings,
+            artworks: (fsData.artworks && fsData.artworks.length > 0) ? fsData.artworks : local.artworks,
+            categories: (fsData.categories && fsData.categories.length > 0) ? fsData.categories : local.categories,
+            exhibitions: (fsData.exhibitions !== undefined) ? fsData.exhibitions : local.exhibitions,
+          };
           saveLocalPortfolioData(merged);
           return merged;
         }
@@ -186,14 +202,36 @@ export const api = {
     }
 
     try {
-      return await request<PortfolioData>('/api/portfolio/all');
+      const serverData = await request<PortfolioData>('/api/portfolio/all');
+      // If Firestore has user-uploaded artworks that aren't on server yet, merge them
+      try {
+        const fsData = await getFirestorePortfolioData();
+        if (fsData?.artworks && fsData.artworks.length > 0) {
+          const existingIds = new Set(serverData.artworks.map(a => a.id));
+          const missingArtworks = fsData.artworks.filter(a => !existingIds.has(a.id));
+          if (missingArtworks.length > 0 || fsData.artworks.length > serverData.artworks.length) {
+            serverData.artworks = fsData.artworks;
+          }
+        }
+      } catch (fsSyncErr) {
+        // non-blocking
+      }
+      return serverData;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         // Try Cloud Firestore first for persistent real-time database across all devices
         try {
           const fsData = await getFirestorePortfolioData();
-          if (fsData && fsData.settings) {
-            const merged = { ...getLocalPortfolioData(), ...fsData } as PortfolioData;
+          if (fsData && (fsData.artworks || fsData.settings || fsData.categories)) {
+            const local = getLocalPortfolioData();
+            const merged: PortfolioData = {
+              ...local,
+              ...fsData,
+              settings: fsData.settings ? { ...local.settings, ...fsData.settings } : local.settings,
+              artworks: (fsData.artworks && fsData.artworks.length > 0) ? fsData.artworks : local.artworks,
+              categories: (fsData.categories && fsData.categories.length > 0) ? fsData.categories : local.categories,
+              exhibitions: (fsData.exhibitions !== undefined) ? fsData.exhibitions : local.exhibitions,
+            };
             saveLocalPortfolioData(merged);
             return merged;
           }

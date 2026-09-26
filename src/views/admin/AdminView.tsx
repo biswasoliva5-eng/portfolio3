@@ -25,12 +25,14 @@ import {
   ChevronsUp,
   ChevronsDown,
   ArrowUpDown,
+  CheckCircle2,
 } from 'lucide-react';
 import { Artwork, Category, Exhibition } from '../../types';
 import { CoverPhotoManager } from '../../components/admin/CoverPhotoManager';
 import { AdminSecurityManager } from '../../components/admin/AdminSecurityManager';
 import { CVManager } from '../../components/admin/CVManager';
 import { CloudinarySettingsCard } from '../../components/admin/CloudinarySettingsCard';
+import { ArtworkImage } from '../../components/common/ArtworkImage';
 
 type AdminTab =
   | 'artworks'
@@ -624,7 +626,7 @@ export const AdminView: React.FC = () => {
                         </div>
 
                         <div className="aspect-4/3 bg-neutral-100 mb-3 overflow-hidden rounded relative">
-                          <img
+                          <ArtworkImage
                             src={artwork.mainImage}
                             alt={artwork.title}
                             className="w-full h-full object-cover"
@@ -1317,15 +1319,16 @@ export const AdminView: React.FC = () => {
                     required
                     value={editingArtwork?.mainImage || ''}
                     onChange={e => setEditingArtwork(a => ({ ...a, mainImage: e.target.value }))}
-                    className="flex-1 border border-neutral-200 p-2 rounded"
-                    placeholder="https://..."
+                    className="flex-1 border border-neutral-200 p-2 rounded text-xs font-mono"
+                    placeholder="https://... অথবা পাশের Upload বাটন চাপুন"
                   />
-                  <label className="bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 px-3 py-2 rounded flex items-center gap-1 cursor-pointer">
+                  <label className="bg-neutral-900 text-white hover:bg-neutral-800 border border-neutral-900 px-3.5 py-2 rounded flex items-center gap-1.5 cursor-pointer text-xs font-medium transition-colors shrink-0">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Upload</span>
+                    <span>{uploadingArtImage ? 'আপলোড হচ্ছে...' : 'ছবি আপলোড'}</span>
                     <input
                       type="file"
                       accept="image/*"
+                      disabled={uploadingArtImage}
                       className="hidden"
                       onChange={async e => {
                         const file = e.target.files?.[0];
@@ -1334,9 +1337,9 @@ export const AdminView: React.FC = () => {
                           setUploadingArtImage(true);
                           const res = await api.uploadFile(file);
                           setEditingArtwork(a => ({ ...a, mainImage: res.url }));
-                          showToast('Image uploaded', 'success');
+                          showToast('ছবি সফলভাবে আপলোড হয়েছে!', 'success');
                         } catch (err: any) {
-                          showToast(err.message || 'Upload failed', 'error');
+                          showToast(err.message || 'ছবি আপলোড ব্যর্থ', 'error');
                         } finally {
                           setUploadingArtImage(false);
                         }
@@ -1344,6 +1347,40 @@ export const AdminView: React.FC = () => {
                     />
                   </label>
                 </div>
+
+                {/* Uploading progress indicator */}
+                {uploadingArtImage && (
+                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded p-3 flex items-center gap-2.5 text-xs text-blue-800">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>ছবি আপলোড ও প্রসেসিং হচ্ছে... অনুগ্রহ করে এক মুহূর্ত অপেক্ষা করুন...</span>
+                  </div>
+                )}
+
+                {/* Live Image Preview inside modal */}
+                {editingArtwork?.mainImage && !uploadingArtImage && (
+                  <div className="mt-2.5 p-3 bg-neutral-50 rounded border border-neutral-200">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>ছবি প্রিভিউ (Photo Loaded):</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingArtwork(a => ({ ...a, mainImage: '' }))}
+                        className="text-[11px] text-red-600 hover:text-red-800 hover:underline cursor-pointer"
+                      >
+                        ছবি সরান (Remove)
+                      </button>
+                    </div>
+                    <div className="max-w-xs aspect-4/3 bg-neutral-200/60 rounded overflow-hidden shadow-2xs border border-neutral-300">
+                      <ArtworkImage
+                        src={editingArtwork.mainImage}
+                        alt={editingArtwork.title || 'Artwork Preview'}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

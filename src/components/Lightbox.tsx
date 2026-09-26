@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { Artwork } from '../types';
+import { ArtworkImage } from './common/ArtworkImage';
 
 interface LightboxProps {
   isOpen: boolean;
@@ -113,7 +114,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </>
         )}
 
-        <img
+        <ArtworkImage
           src={currentImage}
           alt={artwork.title}
           className="max-h-[75vh] max-w-[90vw] object-contain shadow-2xl transition-transform duration-300"
