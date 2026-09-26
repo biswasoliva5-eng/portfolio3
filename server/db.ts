@@ -570,11 +570,7 @@ class PortfolioDatabase {
     return {
       settings: this.data.settings,
       categories: [...this.data.categories].sort((a, b) => (a.order || 0) - (b.order || 0)),
-      artworks: [...this.data.artworks].sort((a, b) => {
-        const yearDiff = Number(b.year) - Number(a.year);
-        if (yearDiff !== 0) return yearDiff;
-        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-      }),
+      artworks: [...this.data.artworks].sort((a, b) => (a.order || 9999) - (b.order || 9999)),
       years: sortedYears,
       exhibitions: [...this.data.exhibitions].sort((a, b) => (a.order || 0) - (b.order || 0)),
       about: this.data.about,

@@ -22,7 +22,9 @@ export const Navbar: React.FC = () => {
     setCategoriesDropdownOpen(false);
   }, [currentPath]);
 
-  const categories = data?.categories || [];
+  const categories = [...(data?.categories || [])].sort(
+    (a, b) => (a.order ?? 9999) - (b.order ?? 9999)
+  );
 
   const isCategoryActive = (slug: string) =>
     currentPath === `/${slug}` || currentPath.startsWith(`/${slug}/`);

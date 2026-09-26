@@ -739,16 +739,33 @@ export const api = {
 
   reorderCategories: async (orderedIds: string[]): Promise<Category[]> => {
     try {
-      return await request<Category[]>('/api/admin/categories/reorder', {
+      const res = await request<Category[]>('/api/admin/categories/reorder', {
         method: 'PUT',
         body: JSON.stringify({ orderedIds }),
       });
+      const local = getLocalPortfolioData();
+      orderedIds.forEach((id, idx) => {
+        const cat = local.categories.find(c => c.id === id);
+        if (cat) {
+          cat.order = idx + 1;
+          saveFirestoreCategory(cat).catch(() => {});
+        }
+      });
+      local.categories.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+      saveLocalPortfolioData(local);
+      return res;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         const local = await getLocalPortfolioDataAsync();
-        local.categories.sort((a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id));
+        orderedIds.forEach((id, idx) => {
+          const cat = local.categories.find(c => c.id === id);
+          if (cat) {
+            cat.order = idx + 1;
+            saveFirestoreCategory(cat).catch(() => {});
+          }
+        });
+        local.categories.sort((a, b) => (a.order || 9999) - (b.order || 9999));
         await saveLocalPortfolioDataAsync(local);
-        local.categories.forEach(c => saveFirestoreCategory(c).catch(() => {}));
         return local.categories;
       }
       throw err;

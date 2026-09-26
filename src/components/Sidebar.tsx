@@ -38,7 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onItemClick }) => {
     return Array.from(set).sort((a, b) => Number(b) - Number(a));
   }, [data?.settings?.customYears, data?.years, data?.artworks]);
 
-  const categories = data?.categories || [];
+  const categories = React.useMemo(() => {
+    return [...(data?.categories || [])].sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+  }, [data?.categories]);
 
   const handleArtistClick = (e: React.MouseEvent) => {
     e.preventDefault();

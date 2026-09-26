@@ -26,6 +26,9 @@ import {
   ChevronsDown,
   ArrowUpDown,
   CheckCircle2,
+  GripVertical,
+  UploadCloud,
+  Sparkles,
 } from 'lucide-react';
 import { Artwork, Category, Exhibition } from '../../types';
 import { CoverPhotoManager } from '../../components/admin/CoverPhotoManager';
@@ -33,6 +36,8 @@ import { AdminSecurityManager } from '../../components/admin/AdminSecurityManage
 import { CVManager } from '../../components/admin/CVManager';
 import { CloudinarySettingsCard } from '../../components/admin/CloudinarySettingsCard';
 import { ArtworkImage } from '../../components/common/ArtworkImage';
+import { BatchArtworkUploadModal } from '../../components/admin/BatchArtworkUploadModal';
+import { VisualArtworkReorderModal } from '../../components/admin/VisualArtworkReorderModal';
 
 type AdminTab =
   | 'artworks'
@@ -52,14 +57,20 @@ export const AdminView: React.FC = () => {
   // Artwork state
   const [editingArtwork, setEditingArtwork] = useState<Partial<Artwork> | null>(null);
   const [isArtworkModalOpen, setIsArtworkModalOpen] = useState(false);
+  const [isBatchUploadModalOpen, setIsBatchUploadModalOpen] = useState(false);
+  const [isVisualReorderModalOpen, setIsVisualReorderModalOpen] = useState(false);
   const [uploadingArtImage, setUploadingArtImage] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [isReorderingMode, setIsReorderingMode] = useState(false);
+  const [draggedArtIndex, setDraggedArtIndex] = useState<number | null>(null);
+  const [dragOverArtIndex, setDragOverArtIndex] = useState<number | null>(null);
 
   // Category state
   const [editingCategory, setEditingCategory] = useState<Partial<Category> | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [draggedCatIndex, setDraggedCatIndex] = useState<number | null>(null);
+  const [dragOverCatIndex, setDragOverCatIndex] = useState<number | null>(null);
 
   // Exhibition state
   const [editingExhibition, setEditingExhibition] = useState<Partial<Exhibition> | null>(null);
@@ -315,6 +326,88 @@ export const AdminView: React.FC = () => {
     }
   };
 
+  // Drag and drop reorder for artworks
+  const handleArtworkDrop = async (sourceIdx: number, targetIdx: number) => {
+    if (sourceIdx === targetIdx) return;
+    const list = [...(data?.artworks || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    const [moved] = list.splice(sourceIdx, 1);
+    list.splice(targetIdx, 0, moved);
+    try {
+      const orderedIds = list.map(a => a.id);
+      await api.reorderArtworks(orderedIds);
+      await refreshData();
+      showToast('আর্টওয়ার্ক ড্র্যাগ করে নতুন ক্রমে সাজানো হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'ক্রম সেভ করতে ব্যর্থ', 'error');
+    }
+  };
+
+  // Reorder Categories handler (Directional buttons)
+  const handleMoveCategory = async (index: number, direction: 'up' | 'down' | 'top' | 'bottom') => {
+    const list = [...(data?.categories || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    if (direction === 'up' && index > 0) {
+      const temp = list[index];
+      list[index] = list[index - 1];
+      list[index - 1] = temp;
+    } else if (direction === 'down' && index < list.length - 1) {
+      const temp = list[index];
+      list[index] = list[index + 1];
+      list[index + 1] = temp;
+    } else if (direction === 'top' && index > 0) {
+      const [item] = list.splice(index, 1);
+      list.unshift(item);
+    } else if (direction === 'bottom' && index < list.length - 1) {
+      const [item] = list.splice(index, 1);
+      list.push(item);
+    } else {
+      return;
+    }
+
+    try {
+      const orderedIds = list.map(c => c.id);
+      await api.reorderCategories(orderedIds);
+      await refreshData();
+      showToast('ক্যাটাগরির নতুন ক্রম সেভ হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'ক্যাটাগরি ক্রম সেভ করতে ব্যর্থ', 'error');
+    }
+  };
+
+  // Drag and drop reorder for categories
+  const handleCategoryDrop = async (sourceIdx: number, targetIdx: number) => {
+    if (sourceIdx === targetIdx) return;
+    const list = [...(data?.categories || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    const [moved] = list.splice(sourceIdx, 1);
+    list.splice(targetIdx, 0, moved);
+    try {
+      const orderedIds = list.map(c => c.id);
+      await api.reorderCategories(orderedIds);
+      await refreshData();
+      showToast('ক্যাটাগরি ড্র্যাগ করে সফলভাবে সাজানো হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'ব্যর্থ হয়েছে', 'error');
+    }
+  };
+
+  // Exact rank setter for category
+  const handleSetCategoryExactOrder = async (catId: string, newOrder: number) => {
+    const list = [...(data?.categories || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    const targetIdx = list.findIndex(c => c.id === catId);
+    if (targetIdx === -1) return;
+    const [item] = list.splice(targetIdx, 1);
+    const clampedIndex = Math.max(0, Math.min(newOrder - 1, list.length));
+    list.splice(clampedIndex, 0, item);
+
+    try {
+      const orderedIds = list.map(c => c.id);
+      await api.reorderCategories(orderedIds);
+      await refreshData();
+      showToast('ক্যাটাগরি ক্রম আপডেট হয়েছে', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update category order', 'error');
+    }
+  };
+
   // Exhibition Reorder
   const handleMoveExhibition = async (index: number, direction: 'up' | 'down') => {
     const list = [...(data?.exhibitions || [])].sort((a, b) => (a.order || 9999) - (b.order || 9999));
@@ -523,7 +616,27 @@ export const AdminView: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsBatchUploadModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs transition-colors cursor-pointer shadow-2xs font-medium"
+                    title="একসাথে একাধিক ছবি নির্বাচন করে গ্যালারিতে আপলোড করুন"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>একসাথে একাধিক ছবি আপলোড</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsVisualReorderModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded text-xs transition-colors cursor-pointer shadow-2xs font-medium"
+                    title="পার্সেল / ড্র্যাগ অ্যান্ড ড্রপ দিয়ে সহজে আর্টওয়ার্কের ক্রম পরিবর্তন করুন"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" />
+                    <span>ফ্লেক্সিবল ক্রম সাজান (Visual Board)</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setIsReorderingMode(!isReorderingMode)}
@@ -534,7 +647,7 @@ export const AdminView: React.FC = () => {
                     }`}
                   >
                     <ArrowUpDown className="w-3.5 h-3.5" />
-                    <span>{isReorderingMode ? 'সাজানো সম্পন্ন' : 'আর্টওয়ার্কের ক্রম পরিবর্তন'}</span>
+                    <span>{isReorderingMode ? 'সাজানো সম্পন্ন' : 'তালিকায় ক্রম বাটন'}</span>
                   </button>
 
                   <button
@@ -549,7 +662,7 @@ export const AdminView: React.FC = () => {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>নতুন আর্টওয়ার্ক যোগ করুন</span>
+                    <span>নতুন আর্টওয়ার্ক</span>
                   </button>
                 </div>
               </div>
@@ -557,12 +670,12 @@ export const AdminView: React.FC = () => {
               {isReorderingMode && (
                 <div className="bg-amber-50/70 border border-amber-200 p-3 rounded text-xs text-amber-900 flex items-center justify-between">
                   <div>
-                    <strong>ক্রম পরিবর্তনের মোড চালু আছে:</strong> যে ছবিটিকে সবার আগে রাখতে চান সেটিতে <strong>⤒ শুরুতে</strong> বা <strong>↑ উপরে</strong> ক্লিক করুন অথবা সরাসরি পজিশন নম্বর লিখুন। গ্যালারি পেজে এই ক্রমেই ছবিগুলো প্রদর্শিত হবে।
+                    <strong>ফ্লেক্সিবল ক্রম মোড:</strong> যেকোনো কার্ড মাউস দিয়ে ড্র্যাগ (Drag & Drop) করে পছন্দের ঘরে বসান অথবা <strong>⤒ শুরুতে</strong> / <strong>↑ উপরে</strong> চাপুন অথবা সরাসরি নম্বর লিখুন।
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsReorderingMode(false)}
-                    className="px-2.5 py-1 bg-amber-600 text-white rounded text-[11px] font-medium hover:bg-amber-700 shrink-0 ml-3"
+                    className="px-2.5 py-1 bg-amber-600 text-white rounded text-[11px] font-medium hover:bg-amber-700 shrink-0 ml-3 cursor-pointer"
                   >
                     ঠিক আছে
                   </button>
@@ -575,17 +688,50 @@ export const AdminView: React.FC = () => {
                   .map((artwork, idx, arr) => (
                     <div
                       key={artwork.id}
-                      className={`border rounded p-3 flex flex-col justify-between transition-colors bg-white ${
-                        isReorderingMode
+                      draggable
+                      onDragStart={e => {
+                        setDraggedArtIndex(idx);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(idx));
+                      }}
+                      onDragOver={e => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverArtIndex !== idx) setDragOverArtIndex(idx);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedArtIndex(null);
+                        setDragOverArtIndex(null);
+                      }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        if (draggedArtIndex !== null && draggedArtIndex !== idx) {
+                          handleArtworkDrop(draggedArtIndex, idx);
+                        }
+                        setDraggedArtIndex(null);
+                        setDragOverArtIndex(null);
+                      }}
+                      className={`border rounded-lg p-3 flex flex-col justify-between transition-all bg-white cursor-grab active:cursor-grabbing select-none ${
+                        draggedArtIndex === idx
+                          ? 'opacity-30 border-blue-500 scale-98'
+                          : dragOverArtIndex === idx
+                          ? 'border-blue-600 ring-2 ring-blue-300 bg-blue-50/20'
+                          : isReorderingMode
                           ? 'border-amber-300 shadow-xs'
                           : 'border-neutral-200 hover:border-neutral-400'
                       }`}
                     >
                       <div>
-                        {/* Position badge and video indicator */}
+                        {/* Position badge, Drag handle and video indicator */}
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-neutral-900 text-white">
+                            <span
+                              className="text-neutral-400 hover:text-neutral-800 p-0.5 rounded cursor-grab"
+                              title="মাউস দিয়ে টেনে আগে-পিছে নিন (Drag to Reorder)"
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </span>
+                            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-neutral-900 text-white shadow-2xs">
                               #{idx + 1}
                             </span>
                             {artwork.videoUrl && (
@@ -597,7 +743,7 @@ export const AdminView: React.FC = () => {
                           </div>
 
                           {/* Quick Order Input */}
-                          <div className="flex items-center gap-1 text-[11px] text-neutral-500">
+                          <div className="flex items-center gap-1 text-[11px] text-neutral-500" onClick={e => e.stopPropagation()}>
                             <span>ক্রম:</span>
                             <input
                               type="number"
@@ -641,7 +787,7 @@ export const AdminView: React.FC = () => {
                       </div>
 
                       {/* Reorder arrows and edit/delete actions */}
-                      <div className="flex items-center justify-between gap-1 mt-4 pt-3 border-t border-neutral-100">
+                      <div className="flex items-center justify-between gap-1 mt-4 pt-3 border-t border-neutral-100" onClick={e => e.stopPropagation()}>
                         {/* Directional buttons */}
                         <div className="flex items-center gap-0.5">
                           <button
@@ -714,57 +860,217 @@ export const AdminView: React.FC = () => {
           {/* 2. CATEGORIES TAB */}
           {currentTab === 'categories' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-100">
                 <div>
-                  <h2 className="text-base font-semibold text-neutral-950">Categories</h2>
-                  <p className="text-xs text-neutral-400">Manage artistic mediums and sections</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-neutral-950">Categories</h2>
+                    <span className="text-[11px] bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded font-mono">
+                      {(data?.categories || []).length} categories
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    ক্যাটাগরি তৈরি করুন এবং মাউস দিয়ে টেনে (Drag & Drop) পছন্দের ক্রমে আগে-পরে সাজান
+                  </p>
                 </div>
                 <button
                   onClick={() => {
                     setEditingCategory({ order: (data?.categories.length || 0) + 1 });
                     setIsCategoryModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 transition-colors cursor-pointer shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Category</span>
+                  <span>নতুন ক্যাটাগরি</span>
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {(data?.categories || []).map(cat => (
-                  <div
-                    key={cat.id}
-                    className="border border-neutral-200 rounded p-4 flex items-center justify-between"
-                  >
-                    <div>
-                      <h3 className="font-medium text-xs text-neutral-950 uppercase tracking-wider">
-                        {cat.name}
-                      </h3>
-                      <p className="text-[11px] text-neutral-400">Slug: /{cat.slug}</p>
-                      {cat.description && (
-                        <p className="text-xs text-neutral-600 mt-1 max-w-lg">{cat.description}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setEditingCategory(cat);
-                          setIsCategoryModalOpen(true);
-                        }}
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900"
+              {/* Live Navigation Ribbon Preview */}
+              <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-3.5 text-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-neutral-900 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>ওয়েবসাইটে মেনু প্রদর্শনের ক্রম (Live Navigation Order):</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-500">
+                    যে ক্যাটাগরি প্রথমে থাকবে সেটি ভিজিটরদের সামনে আগে আসবে
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[11px] text-neutral-400 font-mono">Works ▾</span>
+                  {[...(data?.categories || [])]
+                    .sort((a, b) => (a.order || 9999) - (b.order || 9999))
+                    .map((c, i) => (
+                      <span
+                        key={c.id}
+                        className="inline-flex items-center gap-1.5 text-xs bg-white border border-neutral-300 px-2.5 py-1 rounded-md font-medium text-neutral-800 shadow-2xs"
                       >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCategory(cat.id)}
-                        className="p-1.5 text-neutral-500 hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <span className="text-amber-600 font-mono font-bold">#{i + 1}</span>
+                        <span>{c.name}</span>
+                      </span>
+                    ))}
+                </div>
+              </div>
+
+              {/* Draggable Category Cards */}
+              <div className="space-y-2.5">
+                {[...(data?.categories || [])]
+                  .sort((a, b) => (a.order || 9999) - (b.order || 9999))
+                  .map((cat, idx, arr) => (
+                    <div
+                      key={cat.id}
+                      draggable
+                      onDragStart={e => {
+                        setDraggedCatIndex(idx);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(idx));
+                      }}
+                      onDragOver={e => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverCatIndex !== idx) setDragOverCatIndex(idx);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedCatIndex(null);
+                        setDragOverCatIndex(null);
+                      }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        if (draggedCatIndex !== null && draggedCatIndex !== idx) {
+                          handleCategoryDrop(draggedCatIndex, idx);
+                        }
+                        setDraggedCatIndex(null);
+                        setDragOverCatIndex(null);
+                      }}
+                      className={`border rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white transition-all cursor-grab active:cursor-grabbing select-none ${
+                        draggedCatIndex === idx
+                          ? 'opacity-30 border-blue-500 scale-98'
+                          : dragOverCatIndex === idx
+                          ? 'border-blue-600 ring-2 ring-blue-300 bg-blue-50/20'
+                          : 'border-neutral-200 hover:border-neutral-300 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Drag Grip Handle */}
+                        <div
+                          className="text-neutral-400 hover:text-neutral-900 cursor-grab active:cursor-grabbing p-1"
+                          title="মাউস দিয়ে টেনে যেকোনো পজিশনে বসান (Drag & Drop)"
+                        >
+                          <GripVertical className="w-4 h-4" />
+                        </div>
+
+                        {/* Rank Badge */}
+                        <span className="font-mono text-xs font-bold text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">
+                          #{idx + 1}
+                        </span>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-xs text-neutral-950 uppercase tracking-wider">
+                              {cat.name}
+                            </h3>
+                            <span className="text-[10px] text-neutral-400 font-mono">/{cat.slug}</span>
+                          </div>
+                          {cat.description && (
+                            <p className="text-xs text-neutral-500 mt-0.5 line-clamp-1 max-w-md">
+                              {cat.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                        {/* Numeric Rank Input */}
+                        <div className="flex items-center gap-1 text-[11px] text-neutral-500 mr-2">
+                          <span>পজিশন:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={arr.length}
+                            defaultValue={idx + 1}
+                            key={`${cat.id}-${idx}`}
+                            onBlur={e => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val) && val > 0 && val !== idx + 1) {
+                                handleSetCategoryExactOrder(cat.id, val);
+                              }
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                const val = parseInt((e.target as HTMLInputElement).value, 10);
+                                if (!isNaN(val) && val > 0 && val !== idx + 1) {
+                                  handleSetCategoryExactOrder(cat.id, val);
+                                }
+                              }
+                            }}
+                            className="w-10 px-1 py-0.5 text-center border border-neutral-300 rounded font-mono text-xs focus:outline-hidden focus:border-neutral-900"
+                            title="পজিশন নম্বর লিখে Enter চাপুন"
+                          />
+                        </div>
+
+                        {/* Quick directional buttons */}
+                        <div className="flex items-center gap-0.5 bg-neutral-100 p-0.5 rounded border border-neutral-200">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveCategory(idx, 'top')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-white rounded disabled:opacity-20 cursor-pointer"
+                            title="সবার শুরুতে নিয়ে যান (First)"
+                          >
+                            <ChevronsUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveCategory(idx, 'up')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-white rounded disabled:opacity-20 cursor-pointer"
+                            title="এক ধাপ উপরে (Move Up)"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === arr.length - 1}
+                            onClick={() => handleMoveCategory(idx, 'down')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-white rounded disabled:opacity-20 cursor-pointer"
+                            title="এক ধাপ নিচে (Move Down)"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === arr.length - 1}
+                            onClick={() => handleMoveCategory(idx, 'bottom')}
+                            className="p-1 text-neutral-500 hover:text-neutral-950 hover:bg-white rounded disabled:opacity-20 cursor-pointer"
+                            title="সবার শেষে নিয়ে যান (Last)"
+                          >
+                            <ChevronsDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-1 border-l border-neutral-200 pl-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCategory(cat);
+                              setIsCategoryModalOpen(true);
+                            }}
+                            className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded cursor-pointer"
+                            title="এডিট করুন"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            className="p-1.5 text-neutral-500 hover:text-red-600 hover:bg-neutral-100 rounded cursor-pointer"
+                            title="মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
           )}
@@ -1623,6 +1929,30 @@ export const AdminView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Batch Artwork Upload Modal */}
+      <BatchArtworkUploadModal
+        isOpen={isBatchUploadModalOpen}
+        onClose={() => setIsBatchUploadModalOpen(false)}
+        categories={data?.categories || []}
+        onSuccess={async () => {
+          await refreshData();
+        }}
+        showToast={showToast}
+      />
+
+      {/* Visual Artwork Sequence Reorder Board */}
+      <VisualArtworkReorderModal
+        isOpen={isVisualReorderModalOpen}
+        onClose={() => setIsVisualReorderModalOpen(false)}
+        artworks={data?.artworks || []}
+        categories={data?.categories || []}
+        onSaveOrder={async (orderedIds: string[]) => {
+          await api.reorderArtworks(orderedIds);
+          await refreshData();
+        }}
+        showToast={showToast}
+      />
     </div>
   );
 };
