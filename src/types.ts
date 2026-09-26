@@ -40,6 +40,7 @@ export interface Artwork {
   images?: ArtworkImage[];
   isFeatured?: boolean;
   notes?: string;
+  order?: number;
   videoUrl?: string;
   videoTitle?: string;
   mediaType?: string;

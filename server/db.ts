@@ -634,7 +634,7 @@ class PortfolioDatabase {
 
   // Artworks
   public getArtworks(): Artwork[] {
-    return this.data.artworks;
+    return [...this.data.artworks].sort((a, b) => (a.order || 9999) - (b.order || 9999));
   }
 
   public getArtworkBySlug(slug: string): Artwork | undefined {
@@ -647,10 +647,11 @@ class PortfolioDatabase {
     const artwork: Artwork = {
       ...artworkData,
       id,
+      order: artworkData.order || this.data.artworks.length + 1,
       createdAt: now,
       updatedAt: now,
     };
-    this.data.artworks.unshift(artwork);
+    this.data.artworks.push(artwork);
     this.saveToFile();
     return artwork;
   }
@@ -677,6 +678,16 @@ class PortfolioDatabase {
     this.data.artworks.splice(index, 1);
     this.saveToFile();
     return true;
+  }
+
+  public reorderArtworks(orderedIds: string[]): Artwork[] {
+    orderedIds.forEach((id, idx) => {
+      const art = this.data.artworks.find(a => a.id === id);
+      if (art) art.order = idx + 1;
+    });
+    this.data.artworks.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    this.saveToFile();
+    return this.getArtworks();
   }
 
   // Categories
@@ -762,6 +773,16 @@ class PortfolioDatabase {
     this.data.exhibitions.splice(index, 1);
     this.saveToFile();
     return true;
+  }
+
+  public reorderExhibitions(orderedIds: string[]): Exhibition[] {
+    orderedIds.forEach((id, idx) => {
+      const ex = this.data.exhibitions.find(e => e.id === id);
+      if (ex) ex.order = idx + 1;
+    });
+    this.data.exhibitions.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    this.saveToFile();
+    return this.getExhibitions();
   }
 
   // About Content

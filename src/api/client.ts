@@ -576,6 +576,41 @@ export const api = {
     }
   },
 
+  reorderArtworks: async (orderedIds: string[]): Promise<Artwork[]> => {
+    try {
+      const res = await request<Artwork[]>('/api/admin/artworks/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ orderedIds }),
+      });
+      const local = getLocalPortfolioData();
+      orderedIds.forEach((id, idx) => {
+        const art = local.artworks.find(a => a.id === id);
+        if (art) {
+          art.order = idx + 1;
+          saveFirestoreArtwork(art).catch(() => {});
+        }
+      });
+      local.artworks.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+      saveLocalPortfolioData(local);
+      return res;
+    } catch (err: any) {
+      if (isStaticHostingError(err)) {
+        const local = await getLocalPortfolioDataAsync();
+        orderedIds.forEach((id, idx) => {
+          const art = local.artworks.find(a => a.id === id);
+          if (art) {
+            art.order = idx + 1;
+            saveFirestoreArtwork(art).catch(() => {});
+          }
+        });
+        local.artworks.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+        await saveLocalPortfolioDataAsync(local);
+        return local.artworks;
+      }
+      throw err;
+    }
+  },
+
   // Categories
   addCategory: async (category: Partial<Category>): Promise<Category> => {
     try {
@@ -767,6 +802,41 @@ export const api = {
         await saveLocalPortfolioDataAsync(local);
         deleteFirestoreExhibition(id).catch(() => {});
         return { success: true };
+      }
+      throw err;
+    }
+  },
+
+  reorderExhibitions: async (orderedIds: string[]): Promise<Exhibition[]> => {
+    try {
+      const res = await request<Exhibition[]>('/api/admin/exhibitions/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ orderedIds }),
+      });
+      const local = getLocalPortfolioData();
+      orderedIds.forEach((id, idx) => {
+        const ex = local.exhibitions.find(e => e.id === id);
+        if (ex) {
+          ex.order = idx + 1;
+          saveFirestoreExhibition(ex).catch(() => {});
+        }
+      });
+      local.exhibitions.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+      saveLocalPortfolioData(local);
+      return res;
+    } catch (err: any) {
+      if (isStaticHostingError(err)) {
+        const local = await getLocalPortfolioDataAsync();
+        orderedIds.forEach((id, idx) => {
+          const ex = local.exhibitions.find(e => e.id === id);
+          if (ex) {
+            ex.order = idx + 1;
+            saveFirestoreExhibition(ex).catch(() => {});
+          }
+        });
+        local.exhibitions.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+        await saveLocalPortfolioDataAsync(local);
+        return local.exhibitions;
       }
       throw err;
     }

@@ -419,6 +419,19 @@ async function startServer() {
     }
   });
 
+  app.put('/api/admin/artworks/reorder', requireAdminAuth, (req, res) => {
+    try {
+      const { orderedIds } = req.body;
+      if (!Array.isArray(orderedIds)) {
+        return res.status(400).json({ error: 'orderedIds must be an array' });
+      }
+      const reordered = db.reorderArtworks(orderedIds);
+      res.json(reordered);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to reorder artworks.' });
+    }
+  });
+
   // Categories CRUD
   app.post('/api/admin/categories', requireAdminAuth, (req, res) => {
     try {
@@ -585,6 +598,19 @@ async function startServer() {
       res.json({ success: true, message: 'Exhibition deleted.' });
     } catch (err) {
       res.status(500).json({ error: 'Failed to delete exhibition.' });
+    }
+  });
+
+  app.put('/api/admin/exhibitions/reorder', requireAdminAuth, (req, res) => {
+    try {
+      const { orderedIds } = req.body;
+      if (!Array.isArray(orderedIds)) {
+        return res.status(400).json({ error: 'orderedIds must be an array' });
+      }
+      const reordered = db.reorderExhibitions(orderedIds);
+      res.json(reordered);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to reorder exhibitions.' });
     }
   });
 
