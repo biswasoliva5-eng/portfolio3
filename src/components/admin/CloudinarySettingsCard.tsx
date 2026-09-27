@@ -185,8 +185,15 @@ export const CloudinarySettingsCard: React.FC<CloudinarySettingsCardProps> = ({ 
         </div>
       )}
 
-      {/* Settings Form */}
-      <form onSubmit={handleSave} className="space-y-4 pt-2">
+      {/* Settings Form Container (div instead of form to avoid nested form hydration warning) */}
+      <div className="space-y-4 pt-2">
+        <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded text-xs text-amber-900 leading-relaxed">
+          <strong>💡 GitHub এ কোড পুশ করার পর ছবি না হারানোর নিশ্চয়তা:</strong>
+          <p className="mt-1 text-[11px] text-amber-800">
+            Cloudinary কনফিগার করলে আপনার আপলোড করা প্রতিটি হাই-রেজ্যুলিউশন ছবি সরাসরি গ্লোবাল CDN ক্লাউডে জমা হয়। ফলস্বরূপ পরবর্তীতে গিটহাবে যতবারই নতুন কোড পুশ করা হোক না কেন, কোনো ছবি মুছবে না বা হারাবে না।
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
             <label className="block text-neutral-700 font-medium mb-1">
@@ -239,7 +246,8 @@ export const CloudinarySettingsCard: React.FC<CloudinarySettingsCardProps> = ({ 
           </button>
 
           <button
-            type="submit"
+            type="button"
+            onClick={handleSave}
             disabled={saving}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-950 text-white rounded text-xs font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer"
           >
@@ -247,7 +255,7 @@ export const CloudinarySettingsCard: React.FC<CloudinarySettingsCardProps> = ({ 
             <span>{saving ? 'সেভ হচ্ছে...' : 'ক্লাউড সেটিংস সেভ করুন'}</span>
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 };

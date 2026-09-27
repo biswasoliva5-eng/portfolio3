@@ -38,7 +38,111 @@ import {
   deleteFirestoreInquiry,
   saveFirestoreAdminCredentials,
   getFirestoreAdminCredentials,
+  syncEntirePortfolioToFirestore,
 } from '../lib/firestoreService';
+
+/**
+ * Robust bidirectional merge:
+ * Guarantees that neither user-added cloud data nor Git-deployed default artworks are lost.
+ * When new code is pushed to GitHub, existing artworks in Firestore are merged with code data,
+ * preventing data wipes during Git deployments.
+ */
+export function mergePortfolioData(
+  base: PortfolioData,
+  cloud?: Partial<PortfolioData> | null
+): PortfolioData {
+  if (!cloud) return base;
+
+  // 1. Settings: user cloud settings take precedence while keeping all keys
+  const settings: SiteSettings = {
+    ...base.settings,
+    ...(cloud.settings || {}),
+  };
+
+  // 2. About
+  const about: AboutContent = {
+    ...base.about,
+    ...(cloud.about || {}),
+  };
+
+  // 3. CV
+  const cv: CVDoc | null = cloud.cv !== undefined ? cloud.cv : base.cv;
+
+  // 4. Social Links
+  const socialLinks: SocialLink[] =
+    cloud.socialLinks && cloud.socialLinks.length > 0 ? cloud.socialLinks : base.socialLinks;
+
+  // 5. Categories: merge unique categories by slug/id
+  const catMap = new Map<string, Category>();
+  (base.categories || []).forEach(c => catMap.set(c.slug || c.id, c));
+  (cloud.categories || []).forEach(c => {
+    const key = c.slug || c.id;
+    const existing = catMap.get(key);
+    catMap.set(key, existing ? { ...existing, ...c } : c);
+  });
+  const categories = Array.from(catMap.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+  // 6. Artworks: PREVENT DATA OVERWRITING & IMAGE LOSS
+  const artMap = new Map<string, Artwork>();
+
+  // Add all base artworks first
+  (base.artworks || []).forEach(art => {
+    artMap.set(art.id, art);
+  });
+
+  // Overlay cloud artworks from Firestore
+  (cloud.artworks || []).forEach(cloudArt => {
+    const existing = artMap.get(cloudArt.id);
+    if (!existing) {
+      // User created new artwork in cloud -> preserve it!
+      artMap.set(cloudArt.id, cloudArt);
+    } else {
+      // Artwork exists in both: merge fields without losing photos
+      artMap.set(cloudArt.id, {
+        ...existing,
+        ...cloudArt,
+        images:
+          cloudArt.images && cloudArt.images.length > 0 ? cloudArt.images : existing.images,
+        mainImage: cloudArt.mainImage || existing.mainImage,
+      });
+    }
+  });
+
+  const artworks = Array.from(artMap.values()).sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+  // 7. Exhibitions
+  const exMap = new Map<string, Exhibition>();
+  (base.exhibitions || []).forEach(e => exMap.set(e.id, e));
+  (cloud.exhibitions || []).forEach(e => {
+    const existing = exMap.get(e.id);
+    exMap.set(e.id, existing ? { ...existing, ...e } : e);
+  });
+  const exhibitions = Array.from(exMap.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+  // 8. Years
+  const yearsSet = new Set<string>([
+    ...(base.years || []),
+    ...(cloud.years || []),
+    ...(settings.customYears || []),
+  ]);
+  const years = Array.from(yearsSet).sort((a, b) => Number(b) - Number(a));
+
+  // 9. Messages
+  const messages = cloud.messages || cloud.inquiries || base.messages || [];
+
+  return {
+    settings,
+    categories,
+    artworks,
+    exhibitions,
+    about,
+    cv,
+    socialLinks,
+    years,
+    messages,
+    inquiries: messages,
+  };
+}
 
 const AUTH_TOKEN_KEY = 'oliva_biswas_admin_token';
 const AUTH_USER_KEY = 'oliva_biswas_admin_user';
@@ -178,70 +282,60 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Public Data
   getPublicData: async (): Promise<PortfolioData> => {
-    // On static hosting (like GitHub Pages) or fallback
+    // 1. Start with local base data
+    const localBase = getLocalPortfolioData();
+
+    // 2. If on static hosting (like GitHub Pages) or browser-only runtime
     if (isStaticHost()) {
       try {
         const fsData = await getFirestorePortfolioData();
-        if (fsData && (fsData.artworks || fsData.settings || fsData.categories)) {
-          const local = getLocalPortfolioData();
-          const merged: PortfolioData = {
-            ...local,
-            ...fsData,
-            settings: fsData.settings ? { ...local.settings, ...fsData.settings } : local.settings,
-            artworks: (fsData.artworks && fsData.artworks.length > 0) ? fsData.artworks : local.artworks,
-            categories: (fsData.categories && fsData.categories.length > 0) ? fsData.categories : local.categories,
-            exhibitions: (fsData.exhibitions !== undefined) ? fsData.exhibitions : local.exhibitions,
-          };
+        if (fsData) {
+          const merged = mergePortfolioData(localBase, fsData);
           saveLocalPortfolioData(merged);
           return merged;
         }
       } catch (fsErr) {
         console.warn('Cloud Firestore fetch fallback to local:', fsErr);
       }
-      return await getLocalPortfolioDataAsync();
+      return localBase;
     }
 
+    // 3. If running with Node.js backend server
     try {
       const serverData = await request<PortfolioData>('/api/portfolio/all');
-      // If Firestore has user-uploaded artworks that aren't on server yet, merge them
       try {
         const fsData = await getFirestorePortfolioData();
-        if (fsData?.artworks && fsData.artworks.length > 0) {
-          const existingIds = new Set(serverData.artworks.map(a => a.id));
-          const missingArtworks = fsData.artworks.filter(a => !existingIds.has(a.id));
-          if (missingArtworks.length > 0 || fsData.artworks.length > serverData.artworks.length) {
-            serverData.artworks = fsData.artworks;
-          }
+        if (fsData) {
+          const merged = mergePortfolioData(serverData, fsData);
+          saveLocalPortfolioData(merged);
+          return merged;
         }
       } catch (fsSyncErr) {
         // non-blocking
       }
+      saveLocalPortfolioData(serverData);
       return serverData;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
-        // Try Cloud Firestore first for persistent real-time database across all devices
         try {
           const fsData = await getFirestorePortfolioData();
-          if (fsData && (fsData.artworks || fsData.settings || fsData.categories)) {
-            const local = getLocalPortfolioData();
-            const merged: PortfolioData = {
-              ...local,
-              ...fsData,
-              settings: fsData.settings ? { ...local.settings, ...fsData.settings } : local.settings,
-              artworks: (fsData.artworks && fsData.artworks.length > 0) ? fsData.artworks : local.artworks,
-              categories: (fsData.categories && fsData.categories.length > 0) ? fsData.categories : local.categories,
-              exhibitions: (fsData.exhibitions !== undefined) ? fsData.exhibitions : local.exhibitions,
-            };
+          if (fsData) {
+            const merged = mergePortfolioData(localBase, fsData);
             saveLocalPortfolioData(merged);
             return merged;
           }
         } catch (fsErr) {
           console.warn('Cloud Firestore fetch fallback to local:', fsErr);
         }
-        return await getLocalPortfolioDataAsync();
+        return localBase;
       }
       throw err;
     }
+  },
+
+  syncAllToCloud: async () => {
+    const current = getLocalPortfolioData();
+    return syncEntirePortfolioToFirestore(current);
   },
 
   getArtworks: async (params?: { category?: string; featured?: boolean; search?: string }): Promise<Artwork[]> => {

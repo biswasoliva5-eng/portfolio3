@@ -243,48 +243,68 @@ export async function smartMediaUpload(
     }
   }
 
-  // 3. Try Backend Server endpoint if running fullstack
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('oliva_biswas_admin_token') : null;
-    const res = await fetch('/api/admin/upload', {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.url) {
-        return {
-          url: data.url,
-          filename: data.filename || file.name,
-          size: data.size || file.size,
-          isCloud: true,
-        };
-      }
+  // 3. Image Handling without 3rd-party CDN:
+  // If not video, compress image to high-efficiency WebP/JPEG (max 1200x1200, 0.74 quality ~60-90KB)
+  // This compressed dataUrl can be stored directly into Firestore documents (1MB limit per doc)
+  // ensuring the image NEVER disappears on GitHub Pages or across devices!
+  if (!isVideo) {
+    const compressed = await compressImage(file, 1200, 1200, 0.74);
+    const mediaKey = `media_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    await storeInIndexedDB(mediaKey, compressed.dataUrl);
+
+    // Optionally also upload to local server in background if available
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('oliva_biswas_admin_token') : null;
+      fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      }).catch(() => {});
+    } catch {
+      // ignore
     }
-  } catch {
-    // Backend server not present (e.g. GitHub Pages static deployment)
+
+    return {
+      url: compressed.dataUrl,
+      filename: file.name,
+      size: compressed.file.size,
+      isCloud: true, // Portable across Git & Firestore
+    };
   }
 
   // 4. For videos on static host without Cloudinary
   if (isVideo) {
+    // If backend server is running, try server upload
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('oliva_biswas_admin_token') : null;
+      const res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          return {
+            url: data.url,
+            filename: data.filename || file.name,
+            size: data.size || file.size,
+            isCloud: true,
+          };
+        }
+      }
+    } catch {
+      // server not available
+    }
+
     throw new Error(
       'ভিডিও আপলোড করার জন্য Cloudinary প্রয়োজন (কারণ GitHub Pages এ সার্ভার ফাইল স্টোরেজ থাকে না)। অনুগ্রহ করে Admin Settings এ গিয়ে Cloud Name ও Upload Preset সেট করুন।'
     );
   }
 
-  // 5. Image Fallback for static hosting:
-  // Compress tightly (max 1400px, 0.72 quality) to keep under 100KB, and persist to IndexedDB
-  const compressed = await compressImage(file, 1400, 1400, 0.72);
-  const mediaKey = `media_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  await storeInIndexedDB(mediaKey, compressed.dataUrl);
-
-  return {
-    url: compressed.dataUrl,
-    filename: file.name,
-    size: compressed.file.size,
-    isCloud: false,
-  };
+  throw new Error('Unsupported file upload format');
 }

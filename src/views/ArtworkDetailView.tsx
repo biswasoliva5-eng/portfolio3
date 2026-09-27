@@ -188,6 +188,14 @@ export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) =>
                 </button>
               </div>
 
+              {/* View / Angle Caption */}
+              {activeImage?.alt && activeImage.alt !== artwork.title && (
+                <div className="flex items-center justify-between text-xs text-neutral-500 px-1 pt-1 font-mono">
+                  <span>ভিউ: {activeImage.alt}</span>
+                  <span>{selectedImageIndex + 1} / {images.length}</span>
+                </div>
+              )}
+
               {/* Thumbnails if multiple images */}
               {images.length > 1 && (
                 <div className="flex items-center gap-2 overflow-x-auto py-2">
@@ -198,13 +206,14 @@ export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) =>
                         setSelectedImageIndex(idx);
                         setActiveMediaTab('image');
                       }}
+                      title={img.alt || `Angle ${idx + 1}`}
                       className={`w-16 h-16 shrink-0 border overflow-hidden transition-all cursor-pointer ${
                         selectedImageIndex === idx && activeMediaTab === 'image'
-                          ? 'border-neutral-950 opacity-100'
-                          : 'border-transparent opacity-60 hover:opacity-100'
+                          ? 'border-neutral-950 opacity-100 ring-2 ring-neutral-950/20'
+                          : 'border-neutral-200 opacity-60 hover:opacity-100'
                       }`}
                     >
-                      <img src={img.url} alt="" className="w-full h-full object-cover" />
+                      <ArtworkImage src={img.url} alt={img.alt || ''} className="w-full h-full object-cover" />
                     </button>
                   ))}
                   {artwork.videoUrl && (

@@ -152,85 +152,167 @@ export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData
   };
 }
 
+// Clean object recursively to remove all undefined values before saving to Firestore
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return null as unknown as T;
+  if (Array.isArray(data)) {
+    return data
+      .filter(item => item !== undefined)
+      .map(item => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const res: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      if (value !== undefined) {
+        res[key] = cleanForFirestore(value);
+      }
+    }
+    return res as T;
+  }
+  return data;
+}
+
 export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
   const db = getDb();
   if (!db) return;
+  const cleaned = cleanForFirestore(settings);
   try {
-    await setDoc(doc(db, 'site_settings', 'settings'), settings, { merge: true });
-  } catch {}
+    await setDoc(doc(db, 'site_settings', 'settings'), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save site_settings error:', e);
+  }
   try {
-    await setDoc(doc(db, 'portfolio', 'settings'), settings, { merge: true });
-  } catch {}
+    await setDoc(doc(db, 'portfolio', 'settings'), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save portfolio/settings error:', e);
+  }
 }
 
 export async function saveFirestoreArtwork(artwork: Artwork) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'artworks', artwork.id), artwork, { merge: true });
+  const cleaned = cleanForFirestore(artwork);
+  try {
+    await setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
+  } catch (e) {
+    console.error(`Firestore save artwork ${artwork.id} error:`, e);
+    throw e;
+  }
 }
 
 export async function deleteFirestoreArtwork(id: string) {
   const db = getDb();
   if (!db) return;
-  await deleteDoc(doc(db, 'artworks', id));
+  try {
+    await deleteDoc(doc(db, 'artworks', id));
+  } catch (e) {
+    console.error(`Firestore delete artwork ${id} error:`, e);
+    throw e;
+  }
 }
 
 export async function saveFirestoreCategory(category: Category) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'categories', category.id), category, { merge: true });
+  const cleaned = cleanForFirestore(category);
+  try {
+    await setDoc(doc(db, 'categories', category.id), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save category error:', e);
+  }
 }
 
 export async function deleteFirestoreCategory(id: string) {
   const db = getDb();
   if (!db) return;
-  await deleteDoc(doc(db, 'categories', id));
+  try {
+    await deleteDoc(doc(db, 'categories', id));
+  } catch (e) {
+    console.warn('Firestore delete category error:', e);
+  }
 }
 
 export async function saveFirestoreExhibition(exhibition: Exhibition) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'exhibitions', exhibition.id), exhibition, { merge: true });
+  const cleaned = cleanForFirestore(exhibition);
+  try {
+    await setDoc(doc(db, 'exhibitions', exhibition.id), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save exhibition error:', e);
+  }
 }
 
 export async function deleteFirestoreExhibition(id: string) {
   const db = getDb();
   if (!db) return;
-  await deleteDoc(doc(db, 'exhibitions', id));
+  try {
+    await deleteDoc(doc(db, 'exhibitions', id));
+  } catch (e) {
+    console.warn('Firestore delete exhibition error:', e);
+  }
 }
 
 export async function saveFirestoreAbout(about: AboutContent) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'portfolio', 'about'), about, { merge: true });
+  const cleaned = cleanForFirestore(about);
+  try {
+    await setDoc(doc(db, 'portfolio', 'about'), cleaned, { merge: true });
+    await setDoc(doc(db, 'about', 'main'), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save about error:', e);
+  }
 }
 
 export async function saveFirestoreCV(cv: CVDoc | null) {
   const db = getDb();
   if (!db) return;
-  if (!cv) {
-    await deleteDoc(doc(db, 'portfolio', 'cv'));
-  } else {
-    await setDoc(doc(db, 'portfolio', 'cv'), cv, { merge: true });
+  try {
+    if (!cv) {
+      await deleteDoc(doc(db, 'portfolio', 'cv'));
+      await deleteDoc(doc(db, 'about', 'cv'));
+    } else {
+      const cleaned = cleanForFirestore(cv);
+      await setDoc(doc(db, 'portfolio', 'cv'), cleaned, { merge: true });
+      await setDoc(doc(db, 'about', 'cv'), cleaned, { merge: true });
+    }
+  } catch (e) {
+    console.warn('Firestore save CV error:', e);
   }
 }
 
 export async function saveFirestoreSocialLinks(links: SocialLink[]) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'portfolio', 'socialLinks'), { items: links });
+  const cleaned = cleanForFirestore({ items: links });
+  try {
+    await setDoc(doc(db, 'portfolio', 'socialLinks'), cleaned, { merge: true });
+    await setDoc(doc(db, 'site_settings', 'socialLinks'), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save socialLinks error:', e);
+  }
 }
 
 export async function saveFirestoreInquiry(inquiry: ContactMessage) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'inquiries', inquiry.id), inquiry, { merge: true });
+  const cleaned = cleanForFirestore(inquiry);
+  try {
+    await setDoc(doc(db, 'inquiries', inquiry.id), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save inquiry error:', e);
+  }
 }
 
 export async function deleteFirestoreInquiry(id: string) {
   const db = getDb();
   if (!db) return;
-  await deleteDoc(doc(db, 'inquiries', id));
+  try {
+    await deleteDoc(doc(db, 'inquiries', id));
+  } catch (e) {
+    console.warn('Firestore delete inquiry error:', e);
+  }
 }
 
 export async function saveFirestoreAdminCredentials(credentials: {
@@ -241,7 +323,12 @@ export async function saveFirestoreAdminCredentials(credentials: {
 }) {
   const db = getDb();
   if (!db) return;
-  await setDoc(doc(db, 'portfolio', 'auth'), credentials, { merge: true });
+  const cleaned = cleanForFirestore(credentials);
+  try {
+    await setDoc(doc(db, 'portfolio', 'auth'), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save admin credentials error:', e);
+  }
 }
 
 export async function getFirestoreAdminCredentials(): Promise<{
@@ -262,5 +349,70 @@ export async function getFirestoreAdminCredentials(): Promise<{
     console.warn('Firestore read admin credentials note:', err);
     return null;
   }
+}
+
+// Bulk sync entire portfolio dataset to Firestore to guarantee zero data loss
+export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): Promise<{
+  success: boolean;
+  syncedArtworks: number;
+  syncedCategories: number;
+  syncedExhibitions: number;
+}> {
+  const db = getDb();
+  if (!db) throw new Error('Firebase Firestore is not initialized');
+
+  // 1. Settings
+  if (portfolio.settings) {
+    await saveFirestoreSettings(portfolio.settings);
+  }
+
+  // 2. About
+  if (portfolio.about) {
+    await saveFirestoreAbout(portfolio.about);
+  }
+
+  // 3. Social Links
+  if (portfolio.socialLinks && portfolio.socialLinks.length > 0) {
+    await saveFirestoreSocialLinks(portfolio.socialLinks);
+  }
+
+  // 4. CV
+  if (portfolio.cv) {
+    await saveFirestoreCV(portfolio.cv);
+  }
+
+  // 5. Artworks
+  let syncedArtworks = 0;
+  if (portfolio.artworks && portfolio.artworks.length > 0) {
+    for (const art of portfolio.artworks) {
+      await saveFirestoreArtwork(art);
+      syncedArtworks++;
+    }
+  }
+
+  // 6. Categories
+  let syncedCategories = 0;
+  if (portfolio.categories && portfolio.categories.length > 0) {
+    for (const cat of portfolio.categories) {
+      await saveFirestoreCategory(cat);
+      syncedCategories++;
+    }
+  }
+
+  // 7. Exhibitions
+  let syncedExhibitions = 0;
+  if (portfolio.exhibitions && portfolio.exhibitions.length > 0) {
+    for (const ex of portfolio.exhibitions) {
+      await saveFirestoreExhibition(ex);
+      syncedExhibitions++;
+    }
+  }
+
+  return {
+    success: true,
+    syncedArtworks,
+    syncedCategories,
+    syncedExhibitions,
+  };
 }
 

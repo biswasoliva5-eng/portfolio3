@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Artwork } from '../types';
-import { Video } from 'lucide-react';
+import { Video, Layers } from 'lucide-react';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 
 export const HomeView: React.FC = () => {
@@ -64,6 +64,12 @@ export const HomeView: React.FC = () => {
                   <span className="absolute top-2.5 right-2.5 bg-black/75 backdrop-blur-xs text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-mono tracking-wider">
                     <Video className="w-3 h-3 text-red-400" />
                     <span>Video</span>
+                  </span>
+                )}
+                {artwork.images && artwork.images.length > 1 && (
+                  <span className="absolute bottom-2.5 right-2.5 bg-black/75 backdrop-blur-xs text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-mono tracking-wider">
+                    <Layers className="w-3 h-3 text-neutral-300" />
+                    <span>{artwork.images.length} Photos</span>
                   </span>
                 )}
               </div>

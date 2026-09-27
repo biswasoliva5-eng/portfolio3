@@ -29,6 +29,9 @@ import {
   GripVertical,
   UploadCloud,
   Sparkles,
+  RefreshCw,
+  Download,
+  Cloud,
 } from 'lucide-react';
 import { Artwork, Category, Exhibition } from '../../types';
 import { CoverPhotoManager } from '../../components/admin/CoverPhotoManager';
@@ -38,6 +41,7 @@ import { CloudinarySettingsCard } from '../../components/admin/CloudinarySetting
 import { ArtworkImage } from '../../components/common/ArtworkImage';
 import { BatchArtworkUploadModal } from '../../components/admin/BatchArtworkUploadModal';
 import { VisualArtworkReorderModal } from '../../components/admin/VisualArtworkReorderModal';
+import { ArtworkMultiImageManager } from '../../components/admin/ArtworkMultiImageManager';
 
 type AdminTab =
   | 'artworks'
@@ -101,6 +105,65 @@ export const AdminView: React.FC = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingAbout, setSavingAbout] = useState(false);
   const [uploadingCV, setUploadingCV] = useState(false);
+  const [syncingCloud, setSyncingCloud] = useState(false);
+
+  // Sync all portfolio data to Firebase Firestore
+  const handleSyncToCloud = async () => {
+    try {
+      setSyncingCloud(true);
+      const res = await api.syncAllToCloud();
+      showToast(
+        `ক্লাউডে সিঙ্ক সফল! ${res.syncedArtworks}টি আর্টওয়ার্ক ফায়ারবেসে সুরক্ষিত রাখা হয়েছে।`,
+        'success'
+      );
+      await refreshData();
+    } catch (err: any) {
+      showToast(err.message || 'ক্লাউড সিঙ্ক ব্যর্থ হয়েছে', 'error');
+    } finally {
+      setSyncingCloud(false);
+    }
+  };
+
+  // Download complete JSON backup
+  const handleExportBackup = () => {
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `oliva-biswas-portfolio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('পোর্টফোলিও ব্যাকআপ ফাইল ডাউনলোড সম্পন্ন', 'success');
+  };
+
+  // Restore portfolio from JSON backup
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        if (parsed.artworks || parsed.settings) {
+          if (parsed.settings) await api.updateSettings(parsed.settings);
+          if (parsed.artworks && Array.isArray(parsed.artworks)) {
+            for (const art of parsed.artworks) {
+              await api.addArtwork(art).catch(() => {});
+            }
+          }
+          await api.syncAllToCloud();
+          await refreshData();
+          showToast('ব্যাকআপ সফলভাবে রিস্টোর হয়েছে!', 'success');
+        } else {
+          showToast('অবৈধ ব্যাকআপ ফাইল ফরম্যাট', 'error');
+        }
+      } catch (err: any) {
+        showToast('ব্যাকআপ ফাইল পড়তে ত্রুটি: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Save Settings
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -617,6 +680,17 @@ export const AdminView: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={syncingCloud}
+                    onClick={handleSyncToCloud}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded text-xs transition-colors cursor-pointer shadow-2xs font-medium disabled:opacity-50"
+                    title="আপনার সমস্ত নতুন আর্টওয়ার্ক ও ছবিগুলো ক্লাউড ফায়ারবেসে সুরক্ষিত রাখুন যাতে গিটহাবে পুশ করলেও কোনো ডাটা না হারায়"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingCloud ? 'animate-spin' : ''}`} />
+                    <span>{syncingCloud ? 'সিঙ্ক হচ্ছে...' : 'ক্লাউড সিঙ্ক (Cloud Sync)'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setIsBatchUploadModalOpen(true)}
@@ -1437,6 +1511,63 @@ export const AdminView: React.FC = () => {
               {/* Cloudinary & Image/Video Hosting Card */}
               <CloudinarySettingsCard showToast={showToast} />
 
+              {/* Cloud Data Synchronization & Backup Card */}
+              <div className="bg-white border border-neutral-200 p-5 rounded-lg space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-50 text-emerald-700 rounded-md">
+                      <Cloud className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-xs text-neutral-900 uppercase tracking-wider">
+                          ক্লাউড ডাটা সিঙ্ক ও ব্যাকআপ (Cloud Synchronization)
+                        </h4>
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium font-mono">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          ফায়ারবেস ক্লাউড সক্রিয়
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        GitHub এ নতুন কোড পুশ করার পরও যাতে আগের কোনো ছবি বা আর্টওয়ার্ক না মুছে যায়, সেজন্য সব ডাটা ফায়ারবেস ক্লাউড ডাটাবেসে সুরক্ষিত রাখুন।
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-neutral-100">
+                  <button
+                    type="button"
+                    disabled={syncingCloud}
+                    onClick={handleSyncToCloud}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingCloud ? 'animate-spin' : ''}`} />
+                    <span>{syncingCloud ? 'সিঙ্ক হচ্ছে...' : 'সব ডাটা ক্লাউডে সিঙ্ক করুন'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportBackup}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded text-xs font-medium transition-colors cursor-pointer border border-neutral-300"
+                  >
+                    <Download className="w-3.5 h-3.5 text-neutral-600" />
+                    <span>ব্যাকআপ ডাউনলোড (JSON)</span>
+                  </button>
+
+                  <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded text-xs font-medium transition-colors cursor-pointer border border-neutral-300">
+                    <UploadCloud className="w-3.5 h-3.5 text-neutral-600" />
+                    <span>ব্যাকআপ রিস্টোর</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportBackup}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
               {/* Security & Password Card */}
               <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -1615,78 +1746,20 @@ export const AdminView: React.FC = () => {
                 />
               </div>
 
+              {/* Multi-Angle Image Upload & Management */}
               <div>
-                <label className="block text-neutral-700 font-medium mb-1">
-                  Main Image URL or Upload <span className="text-red-500">*</span>
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={editingArtwork?.mainImage || ''}
-                    onChange={e => setEditingArtwork(a => ({ ...a, mainImage: e.target.value }))}
-                    className="flex-1 border border-neutral-200 p-2 rounded text-xs font-mono"
-                    placeholder="https://... অথবা পাশের Upload বাটন চাপুন"
-                  />
-                  <label className="bg-neutral-900 text-white hover:bg-neutral-800 border border-neutral-900 px-3.5 py-2 rounded flex items-center gap-1.5 cursor-pointer text-xs font-medium transition-colors shrink-0">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{uploadingArtImage ? 'আপলোড হচ্ছে...' : 'ছবি আপলোড'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      disabled={uploadingArtImage}
-                      className="hidden"
-                      onChange={async e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          setUploadingArtImage(true);
-                          const res = await api.uploadFile(file);
-                          setEditingArtwork(a => ({ ...a, mainImage: res.url }));
-                          showToast('ছবি সফলভাবে আপলোড হয়েছে!', 'success');
-                        } catch (err: any) {
-                          showToast(err.message || 'ছবি আপলোড ব্যর্থ', 'error');
-                        } finally {
-                          setUploadingArtImage(false);
-                        }
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {/* Uploading progress indicator */}
-                {uploadingArtImage && (
-                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded p-3 flex items-center gap-2.5 text-xs text-blue-800">
-                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                    <span>ছবি আপলোড ও প্রসেসিং হচ্ছে... অনুগ্রহ করে এক মুহূর্ত অপেক্ষা করুন...</span>
-                  </div>
-                )}
-
-                {/* Live Image Preview inside modal */}
-                {editingArtwork?.mainImage && !uploadingArtImage && (
-                  <div className="mt-2.5 p-3 bg-neutral-50 rounded border border-neutral-200">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>ছবি প্রিভিউ (Photo Loaded):</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setEditingArtwork(a => ({ ...a, mainImage: '' }))}
-                        className="text-[11px] text-red-600 hover:text-red-800 hover:underline cursor-pointer"
-                      >
-                        ছবি সরান (Remove)
-                      </button>
-                    </div>
-                    <div className="max-w-xs aspect-4/3 bg-neutral-200/60 rounded overflow-hidden shadow-2xs border border-neutral-300">
-                      <ArtworkImage
-                        src={editingArtwork.mainImage}
-                        alt={editingArtwork.title || 'Artwork Preview'}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  </div>
-                )}
+                <ArtworkMultiImageManager
+                  mainImage={editingArtwork?.mainImage || ''}
+                  images={editingArtwork?.images || []}
+                  onChange={({ mainImage, images }) => {
+                    setEditingArtwork(a => ({
+                      ...a,
+                      mainImage,
+                      images,
+                    }));
+                  }}
+                  showToast={showToast}
+                />
               </div>
 
               <div>
