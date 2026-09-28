@@ -1525,11 +1525,11 @@ export const AdminView: React.FC = () => {
                         </h4>
                         <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium font-mono">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          ফায়ারবেস ক্লাউড সক্রিয়
+                          অটো-সিঙ্ক সক্রিয় (Real-time Cloud Sync)
                         </span>
                       </div>
                       <p className="text-[11px] text-neutral-500 mt-0.5">
-                        GitHub এ নতুন কোড পুশ করার পরও যাতে আগের কোনো ছবি বা আর্টওয়ার্ক না মুছে যায়, সেজন্য সব ডাটা ফায়ারবেস ক্লাউড ডাটাবেসে সুরক্ষিত রাখুন।
+                        আপনি যখনই কোনো নতুন আর্টওয়ার্ক, ছবি, এক্সিবিশন বা সেটিংস সেভ করবেন, তা সাথে সাথে ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে ক্লাউডে এবং সার্ভার ডিস্কে অটো-সিঙ্ক হয়ে যাবে। আলাদা করে কোনো সিঙ্ক বাটনে চাপ দেওয়ার প্রয়োজন নেই। (নিচের বাটনটি শুধুমাত্র প্রয়োজনে পুরো ওয়েবসাইট একবার ম্যানুয়ালি ব্যাকআপ নেওয়ার জন্য)।
                       </p>
                     </div>
                   </div>
