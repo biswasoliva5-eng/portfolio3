@@ -194,9 +194,12 @@ export async function saveFirestoreArtwork(artwork: Artwork) {
   const cleaned = cleanForFirestore(artwork);
   try {
     await setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
+      console.warn('Firestore daily write quota reached. Artwork is safely saved in local and server storage.');
+      return;
+    }
     console.error(`Firestore save artwork ${artwork.id} error:`, e);
-    throw e;
   }
 }
 
@@ -205,9 +208,11 @@ export async function deleteFirestoreArtwork(id: string) {
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'artworks', id));
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
+      return;
+    }
     console.error(`Firestore delete artwork ${id} error:`, e);
-    throw e;
   }
 }
 

@@ -282,8 +282,8 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Public Data
   getPublicData: async (): Promise<PortfolioData> => {
-    // 1. Start with local base data
-    const localBase = getLocalPortfolioData();
+    // 1. Start with local base data (from IndexedDB / cache)
+    const localBase = await getLocalPortfolioDataAsync();
 
     // 2. If on static hosting (like GitHub Pages) or browser-only runtime
     if (isStaticHost()) {
@@ -291,7 +291,7 @@ export const api = {
         const fsData = await getFirestorePortfolioData();
         if (fsData) {
           const merged = mergePortfolioData(localBase, fsData);
-          saveLocalPortfolioData(merged);
+          await saveLocalPortfolioDataAsync(merged);
           return merged;
         }
       } catch (fsErr) {
@@ -303,25 +303,25 @@ export const api = {
     // 3. If running with Node.js backend server
     try {
       const serverData = await request<PortfolioData>('/api/portfolio/all');
+      // Merge serverData with localBase (IndexedDB cache) so nothing uploaded locally is ever lost
+      let consolidated = mergePortfolioData(serverData, localBase);
       try {
         const fsData = await getFirestorePortfolioData();
         if (fsData) {
-          const merged = mergePortfolioData(serverData, fsData);
-          saveLocalPortfolioData(merged);
-          return merged;
+          consolidated = mergePortfolioData(consolidated, fsData);
         }
       } catch (fsSyncErr) {
         // non-blocking
       }
-      saveLocalPortfolioData(serverData);
-      return serverData;
+      await saveLocalPortfolioDataAsync(consolidated);
+      return consolidated;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         try {
           const fsData = await getFirestorePortfolioData();
           if (fsData) {
             const merged = mergePortfolioData(localBase, fsData);
-            saveLocalPortfolioData(merged);
+            await saveLocalPortfolioDataAsync(merged);
             return merged;
           }
         } catch (fsErr) {
@@ -584,9 +584,9 @@ export const api = {
       });
       // Also sync to Firestore and local IndexedDB cache in background
       saveFirestoreArtwork(created).catch(() => {});
-      const local = getLocalPortfolioData();
-      local.artworks.unshift(created);
-      saveLocalPortfolioData(local);
+      const local = await getLocalPortfolioDataAsync();
+      local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
+      await saveLocalPortfolioDataAsync(local);
       return created;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
@@ -611,7 +611,7 @@ export const api = {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        local.artworks.unshift(newArt);
+        local.artworks = [newArt, ...local.artworks.filter(a => a.id !== newArt.id)];
         await saveLocalPortfolioDataAsync(local);
 
         // Sync to Cloud Firestore database
@@ -635,12 +635,14 @@ export const api = {
       });
       // Sync to Firestore & local IndexedDB
       saveFirestoreArtwork(updated).catch(() => {});
-      const local = getLocalPortfolioData();
+      const local = await getLocalPortfolioDataAsync();
       const idx = local.artworks.findIndex(a => a.id === id);
       if (idx !== -1) {
         local.artworks[idx] = updated;
-        saveLocalPortfolioData(local);
+      } else {
+        local.artworks.unshift(updated);
       }
+      await saveLocalPortfolioDataAsync(local);
       return updated;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
@@ -671,19 +673,16 @@ export const api = {
       });
       // Sync deletion to Firestore & local cache
       deleteFirestoreArtwork(id).catch(() => {});
-      const local = getLocalPortfolioData();
+      const local = await getLocalPortfolioDataAsync();
       local.artworks = local.artworks.filter(a => a.id !== id);
-      saveLocalPortfolioData(local);
+      await saveLocalPortfolioDataAsync(local);
       return res;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         const local = await getLocalPortfolioDataAsync();
         local.artworks = local.artworks.filter(a => a.id !== id);
         await saveLocalPortfolioDataAsync(local);
-
-        // Sync deletion to Cloud Firestore database
-        deleteFirestoreArtwork(id).catch(e => console.warn('Firestore artwork delete note:', e));
-
+        deleteFirestoreArtwork(id).catch(() => {});
         return { success: true };
       }
       throw err;

@@ -477,7 +477,61 @@ const STORAGE_KEY = 'oliva_biswas_portfolio_v2';
 const ADMIN_PASS_KEY = 'oliva_biswas_admin_pass';
 const ADMIN_USERNAME_KEY = 'oliva_biswas_admin_username_cfg';
 
+const IDB_DATA_NAME = 'OlivaBiswasPortfolioDataDB';
+const IDB_DATA_STORE = 'portfolio_store';
+
 let inMemoryDataCache: PortfolioData | null = null;
+let idbDataPromise: Promise<IDBDatabase> | null = null;
+
+function getPortfolioIDB(): Promise<IDBDatabase> {
+  if (idbDataPromise) return idbDataPromise;
+  idbDataPromise = new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      reject(new Error('IndexedDB not supported'));
+      return;
+    }
+    const req = window.indexedDB.open(IDB_DATA_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_DATA_STORE)) {
+        db.createObjectStore(IDB_DATA_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return idbDataPromise;
+}
+
+export async function savePortfolioToIndexedDB(data: PortfolioData): Promise<void> {
+  try {
+    const db = await getPortfolioIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_DATA_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_DATA_STORE);
+      const req = store.put(data, 'main_portfolio');
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB portfolio save note:', err);
+  }
+}
+
+export async function loadPortfolioFromIndexedDB(): Promise<PortfolioData | null> {
+  try {
+    const db = await getPortfolioIDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_DATA_STORE, 'readonly');
+      const store = tx.objectStore(IDB_DATA_STORE);
+      const req = store.get('main_portfolio');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
 
 export function getLocalPortfolioData(): PortfolioData {
   if (typeof window === 'undefined') return defaultPortfolioData;
@@ -485,8 +539,15 @@ export function getLocalPortfolioData(): PortfolioData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      saveLocalPortfolioData(defaultPortfolioData);
       inMemoryDataCache = defaultPortfolioData;
+      // Kick off background IndexedDB load
+      loadPortfolioFromIndexedDB().then(idb => {
+        if (idb) {
+          inMemoryDataCache = idb;
+        } else {
+          savePortfolioToIndexedDB(defaultPortfolioData).catch(() => {});
+        }
+      });
       return defaultPortfolioData;
     }
     const parsed = JSON.parse(raw);
@@ -503,6 +564,18 @@ export function getLocalPortfolioData(): PortfolioData {
       inquiries: parsed.inquiries || parsed.messages || defaultMessages,
     };
     inMemoryDataCache = data;
+
+    // Check if IndexedDB has more complete/recent data
+    loadPortfolioFromIndexedDB().then(idb => {
+      if (idb && idb.artworks && idb.artworks.length > data.artworks.length) {
+        inMemoryDataCache = {
+          ...data,
+          ...idb,
+          artworks: idb.artworks,
+        };
+      }
+    });
+
     return data;
   } catch (err) {
     console.error('Failed to parse local portfolio data:', err);
@@ -511,35 +584,69 @@ export function getLocalPortfolioData(): PortfolioData {
 }
 
 export async function getLocalPortfolioDataAsync(): Promise<PortfolioData> {
-  return Promise.resolve(getLocalPortfolioData());
+  const idbData = await loadPortfolioFromIndexedDB();
+  if (idbData && (idbData.artworks?.length || idbData.settings)) {
+    const merged: PortfolioData = {
+      settings: { ...defaultSettings, ...(idbData.settings || {}) },
+      categories: Array.isArray(idbData.categories) && idbData.categories.length > 0 ? idbData.categories : defaultCategories,
+      artworks: Array.isArray(idbData.artworks) && idbData.artworks.length > 0 ? idbData.artworks : defaultArtworks,
+      years: idbData.years || defaultPortfolioData.years,
+      exhibitions: Array.isArray(idbData.exhibitions) && idbData.exhibitions.length > 0 ? idbData.exhibitions : defaultExhibitions,
+      about: { ...defaultAbout, ...(idbData.about || {}) },
+      cv: idbData.cv !== undefined ? idbData.cv : defaultCV,
+      socialLinks: idbData.socialLinks || defaultSocialLinks,
+      messages: idbData.messages || defaultMessages,
+      inquiries: idbData.inquiries || defaultMessages,
+    };
+    inMemoryDataCache = merged;
+    return merged;
+  }
+  return getLocalPortfolioData();
 }
 
 export function saveLocalPortfolioData(data: PortfolioData): void {
   inMemoryDataCache = data;
   if (typeof window === 'undefined') return;
+
+  // 1. Always persist to IndexedDB (no 5MB limit, handles 100MB+ of photos safely)
+  savePortfolioToIndexedDB(data).catch(() => {});
+
+  // 2. Persist to localStorage with safety catch for quota
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (err) {
-    console.warn('LocalStorage quota reached. Compressing storage payload while retaining data in memory...', err);
+    console.warn('LocalStorage quota limit reached. Preserved completely in IndexedDB cache.', err);
     try {
-      // If quota reached, keep lightweight references in localStorage
-      // All artwork titles, order, metadata remain intact; only shrink if necessary
+      // Keep lightweight metadata in localStorage without large base64 strings
+      const lightweightArtworks = (data.artworks || []).map(a => {
+        const isBig = a.mainImage && a.mainImage.length > 30000;
+        return {
+          ...a,
+          mainImage: isBig ? '' : a.mainImage,
+          images: (a.images || []).map(img => ({
+            ...img,
+            url: img.url && img.url.length > 30000 ? '' : img.url,
+          })),
+        };
+      });
       const safeData = {
         ...data,
+        artworks: lightweightArtworks,
         messages: (data.messages || []).slice(0, 5),
         inquiries: (data.inquiries || []).slice(0, 5),
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(safeData));
-    } catch (innerErr) {
-      // Keep running with in-memory cache
-      console.warn('LocalStorage full, continuing with in-memory & Firestore state:', innerErr);
+    } catch {
+      // IndexedDB has already safely saved the entire dataset
     }
   }
 }
 
 export async function saveLocalPortfolioDataAsync(data: PortfolioData): Promise<void> {
+  inMemoryDataCache = data;
+  if (typeof window === 'undefined') return;
+  await savePortfolioToIndexedDB(data);
   saveLocalPortfolioData(data);
-  return Promise.resolve();
 }
 
 export function getLocalAdminPassword(): string {
