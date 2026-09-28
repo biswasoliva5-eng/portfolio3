@@ -108,7 +108,14 @@ export function mergePortfolioData(
     }
   });
 
-  const artworks = Array.from(artMap.values()).sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+  const artworks = Array.from(artMap.values()).sort((a, b) => {
+    if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
+      return a.order - b.order;
+    }
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  });
 
   // 7. Exhibitions
   const exMap = new Map<string, Exhibition>();

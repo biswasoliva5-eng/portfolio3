@@ -570,7 +570,14 @@ class PortfolioDatabase {
     return {
       settings: this.data.settings,
       categories: [...this.data.categories].sort((a, b) => (a.order || 0) - (b.order || 0)),
-      artworks: [...this.data.artworks].sort((a, b) => (a.order || 9999) - (b.order || 9999)),
+      artworks: [...this.data.artworks].sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
+          return a.order - b.order;
+        }
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }),
       years: sortedYears,
       exhibitions: [...this.data.exhibitions].sort((a, b) => (a.order || 0) - (b.order || 0)),
       about: this.data.about,
@@ -630,7 +637,14 @@ class PortfolioDatabase {
 
   // Artworks
   public getArtworks(): Artwork[] {
-    return [...this.data.artworks].sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    return [...this.data.artworks].sort((a, b) => {
+      if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
+        return a.order - b.order;
+      }
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
   }
 
   public getArtworkBySlug(slug: string): Artwork | undefined {
