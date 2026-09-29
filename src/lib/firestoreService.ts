@@ -429,22 +429,27 @@ export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
     const p2 = setDoc(doc(db, 'portfolio', 'settings'), cleaned, { merge: true });
     await Promise.all([p1, p2]);
   } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      return;
+    }
     console.error('Firestore save site_settings error:', e);
-    throw new Error(`Firestore settings update failed: ${e?.message || e}`);
   }
 }
 
 export async function saveFirestoreArtwork(artwork: Artwork) {
   const db = getDb();
   if (!db) {
-    throw new Error('Firestore database is not initialized.');
+    return;
   }
   const cleaned = cleanForFirestore(artwork);
   try {
     await setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
   } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      console.warn('Firestore quota exceeded. Artwork saved locally.');
+      return;
+    }
     console.error(`Firestore save artwork ${artwork.id} error:`, e);
-    throw new Error(`Firestore artwork save failed: ${e?.message || e}`);
   }
 }
 
