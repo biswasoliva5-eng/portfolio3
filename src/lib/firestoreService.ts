@@ -97,7 +97,7 @@ export async function uploadToFirebaseStorage(
 
   const uploadTask = uploadBytesResumable(fileRef, file);
 
-  return new Promise((resolve, reject) => {
+  const uploadPromise = new Promise<{ url: string; filename: string; size: number }>((resolve, reject) => {
     uploadTask.on(
       'state_changed',
       (snapshot) => {
@@ -107,7 +107,6 @@ export async function uploadToFirebaseStorage(
         }
       },
       (error) => {
-        console.error('Firebase Storage upload error:', error);
         reject(new Error(`Firebase Storage upload failed: ${error.message}`));
       },
       async () => {
@@ -124,6 +123,18 @@ export async function uploadToFirebaseStorage(
       }
     );
   });
+
+  // Timeout after 5 seconds so upload never hangs indefinitely
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => {
+      try {
+        uploadTask.cancel();
+      } catch {}
+      reject(new Error('Firebase Storage upload timed out. Switching to fast local processing.'));
+    }, 5000)
+  );
+
+  return Promise.race([uploadPromise, timeoutPromise]);
 }
 
 /**
