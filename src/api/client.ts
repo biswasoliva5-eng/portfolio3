@@ -599,55 +599,45 @@ export const api = {
 
   // Artwork Management
   addArtwork: async (artwork: Partial<Artwork>): Promise<Artwork> => {
-    let created: Artwork | null = null;
-    try {
-      if (!isStaticHost()) {
-        created = await request<Artwork>('/api/admin/artworks', {
-          method: 'POST',
-          body: JSON.stringify(artwork),
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server artwork post note:', serverErr);
-    }
+    const created: Artwork = {
+      id: artwork.id || `art-${Date.now()}`,
+      slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      title: artwork.title || 'Untitled Work',
+      year: artwork.year || new Date().getFullYear(),
+      categorySlug: artwork.categorySlug || 'sculpture',
+      categoryName: artwork.categoryName || 'Sculpture',
+      medium: artwork.medium || '',
+      dimensions: artwork.dimensions || '',
+      description: artwork.description || '',
+      mainImage: artwork.mainImage || '',
+      images: artwork.images || [],
+      isFeatured: artwork.isFeatured || false,
+      notes: artwork.notes || '',
+      videoUrl: artwork.videoUrl || '',
+      videoTitle: artwork.videoTitle || '',
+      mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
+      order: artwork.order || 9999,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...artwork,
+    };
 
-    if (!created) {
-      created = {
-        id: artwork.id || `art-${Date.now()}`,
-        slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        title: artwork.title || 'Untitled Work',
-        year: artwork.year || new Date().getFullYear(),
-        categorySlug: artwork.categorySlug || 'sculpture',
-        categoryName: artwork.categoryName || 'Sculpture',
-        medium: artwork.medium || '',
-        dimensions: artwork.dimensions || '',
-        description: artwork.description || '',
-        mainImage: artwork.mainImage || '',
-        images: artwork.images || [],
-        isFeatured: artwork.isFeatured || false,
-        notes: artwork.notes || '',
-        videoUrl: artwork.videoUrl || '',
-        videoTitle: artwork.videoTitle || '',
-        mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
-        order: artwork.order || 9999,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        ...artwork,
-      };
-    }
+    // Permanently write to Firestore collection 'artworks'
+    await saveFirestoreArtwork(created);
 
     const local = await getLocalPortfolioDataAsync();
-    local.artworks = [created, ...local.artworks.filter(a => a.id !== created!.id)];
+    local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
     await saveLocalPortfolioDataAsync(local);
 
-    // Also batch sync to server to ensure server db.json is updated
     if (!isStaticHost()) {
       try {
-        await request('/api/admin/artworks/batch-sync', {
+        await request('/api/admin/artworks', {
           method: 'POST',
-          body: JSON.stringify({ artworks: local.artworks }),
+          body: JSON.stringify(created),
         });
-      } catch {}
+      } catch (e) {
+        console.warn('Backend server sync note:', e);
+      }
     }
 
     return created;
@@ -658,29 +648,16 @@ export const api = {
   },
 
   updateArtwork: async (id: string, updates: Partial<Artwork>): Promise<Artwork> => {
-    let updated: Artwork | null = null;
-    try {
-      if (!isStaticHost()) {
-        updated = await request<Artwork>(`/api/admin/artworks/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify(updates),
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server update note:', serverErr);
-    }
-
     const local = await getLocalPortfolioDataAsync();
     const idx = local.artworks.findIndex(a => a.id === id);
+    let updated: Artwork;
+
     if (idx !== -1) {
       updated = {
         ...local.artworks[idx],
         ...updates,
         updatedAt: new Date().toISOString(),
       };
-      local.artworks[idx] = updated;
-    } else if (updated) {
-      local.artworks.unshift(updated);
     } else {
       updated = {
         id,
@@ -704,33 +681,35 @@ export const api = {
         updatedAt: new Date().toISOString(),
         ...updates,
       };
-      local.artworks.unshift(updated);
     }
 
+    // Permanently write to Firestore collection 'artworks'
+    await saveFirestoreArtwork(updated);
+
+    if (idx !== -1) {
+      local.artworks[idx] = updated;
+    } else {
+      local.artworks.unshift(updated);
+    }
     await saveLocalPortfolioDataAsync(local);
 
     if (!isStaticHost()) {
       try {
-        await request('/api/admin/artworks/batch-sync', {
-          method: 'POST',
-          body: JSON.stringify({ artworks: local.artworks }),
+        await request(`/api/admin/artworks/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updates),
         });
-      } catch {}
+      } catch (e) {
+        console.warn('Backend server update note:', e);
+      }
     }
 
     return updated;
   },
 
   deleteArtwork: async (id: string) => {
-    try {
-      if (!isStaticHost()) {
-        await request<{ success: boolean }>(`/api/admin/artworks/${id}`, {
-          method: 'DELETE',
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server delete note:', serverErr);
-    }
+    // Permanently delete from Firestore collection 'artworks'
+    await deleteFirestoreArtwork(id);
 
     const local = await getLocalPortfolioDataAsync();
     local.artworks = local.artworks.filter(a => a.id !== id);
@@ -738,11 +717,12 @@ export const api = {
 
     if (!isStaticHost()) {
       try {
-        await request('/api/admin/artworks/batch-sync', {
-          method: 'POST',
-          body: JSON.stringify({ artworks: local.artworks }),
+        await request(`/api/admin/artworks/${id}`, {
+          method: 'DELETE',
         });
-      } catch {}
+      } catch (e) {
+        console.warn('Backend server delete note:', e);
+      }
     }
 
     return { success: true };
