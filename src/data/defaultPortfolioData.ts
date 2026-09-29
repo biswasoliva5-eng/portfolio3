@@ -1779,24 +1779,27 @@ export function getLocalPortfolioData(): PortfolioData {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       inMemoryDataCache = defaultPortfolioData;
-      // Kick off background IndexedDB load
-      loadPortfolioFromIndexedDB().then(idb => {
-        if (idb) {
-          inMemoryDataCache = idb;
-        } else {
-          savePortfolioToIndexedDB(defaultPortfolioData).catch(() => {});
-        }
-      });
       return defaultPortfolioData;
     }
     const parsed = JSON.parse(raw);
     const rawArtworks = Array.isArray(parsed.artworks) ? parsed.artworks : [];
     const cleanArtworks = rawArtworks.filter((a: any) => a && !DUMMY_DEFAULT_ARTWORK_IDS.has(a.id));
 
+    // Ensure all 54 default artworks with their canonical order are present
+    const artMap = new Map<string, Artwork>();
+    defaultArtworks.forEach(a => artMap.set(a.id, { ...a }));
+    cleanArtworks.forEach((a: Artwork) => {
+      if (!artMap.has(a.id)) {
+        artMap.set(a.id, a);
+      }
+    });
+
+    const finalArtworks = Array.from(artMap.values()).sort((a, b) => (a.order || 9999) - (b.order || 9999));
+
     const data: PortfolioData = {
       settings: { ...defaultSettings, ...(parsed.settings || {}) },
       categories: Array.isArray(parsed.categories) ? parsed.categories : defaultCategories,
-      artworks: cleanArtworks,
+      artworks: finalArtworks,
       years: parsed.years || defaultPortfolioData.years,
       exhibitions: Array.isArray(parsed.exhibitions) ? parsed.exhibitions : defaultExhibitions,
       about: { ...defaultAbout, ...(parsed.about || {}) },
@@ -1806,19 +1809,6 @@ export function getLocalPortfolioData(): PortfolioData {
       inquiries: parsed.inquiries || parsed.messages || defaultMessages,
     };
     inMemoryDataCache = data;
-
-    // Check if IndexedDB has more complete/recent data
-    loadPortfolioFromIndexedDB().then(idb => {
-      if (idb && idb.artworks && idb.artworks.length > data.artworks.length) {
-        const idbArtworks = (idb.artworks || []).filter((a: any) => a && !DUMMY_DEFAULT_ARTWORK_IDS.has(a.id));
-        inMemoryDataCache = {
-          ...data,
-          ...idb,
-          artworks: idbArtworks,
-        };
-      }
-    });
-
     return data;
   } catch (err) {
     console.error('Failed to parse local portfolio data:', err);
@@ -1832,10 +1822,20 @@ export async function getLocalPortfolioDataAsync(): Promise<PortfolioData> {
     const rawIdbArtworks = Array.isArray(idbData.artworks) ? idbData.artworks : [];
     const cleanIdbArtworks = rawIdbArtworks.filter((a: any) => a && !DUMMY_DEFAULT_ARTWORK_IDS.has(a.id));
 
+    const artMap = new Map<string, Artwork>();
+    defaultArtworks.forEach(a => artMap.set(a.id, { ...a }));
+    cleanIdbArtworks.forEach((a: Artwork) => {
+      if (!artMap.has(a.id)) {
+        artMap.set(a.id, a);
+      }
+    });
+
+    const finalArtworks = Array.from(artMap.values()).sort((a, b) => (a.order || 9999) - (b.order || 9999));
+
     const merged: PortfolioData = {
       settings: { ...defaultSettings, ...(idbData.settings || {}) },
       categories: Array.isArray(idbData.categories) && idbData.categories.length > 0 ? idbData.categories : defaultCategories,
-      artworks: cleanIdbArtworks,
+      artworks: finalArtworks,
       years: idbData.years || defaultPortfolioData.years,
       exhibitions: Array.isArray(idbData.exhibitions) && idbData.exhibitions.length > 0 ? idbData.exhibitions : defaultExhibitions,
       about: { ...defaultAbout, ...(idbData.about || {}) },
