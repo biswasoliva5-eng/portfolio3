@@ -39,6 +39,7 @@ import {
   saveFirestoreAdminCredentials,
   getFirestoreAdminCredentials,
   syncEntirePortfolioToFirestore,
+  updateFirestoreArtworksOrder,
 } from '../lib/firestoreService';
 
 /**
@@ -72,14 +73,23 @@ export function mergePortfolioData(
   const socialLinks: SocialLink[] =
     cloud.socialLinks && cloud.socialLinks.length > 0 ? cloud.socialLinks : base.socialLinks;
 
-  // 5. Categories: merge unique categories by slug/id
+  // 5. Categories: if cloud has categories, cloud is source of truth
   const catMap = new Map<string, Category>();
-  (base.categories || []).forEach(c => catMap.set(c.slug || c.id, c));
-  (cloud.categories || []).forEach(c => {
-    const key = c.slug || c.id;
-    const existing = catMap.get(key);
-    catMap.set(key, existing ? { ...existing, ...c } : c);
-  });
+  const isDeletedCategory = (c: Category) => c.slug === 'painting' || c.id === 'cat-painting';
+
+  if (Array.isArray(cloud.categories) && cloud.categories.length > 0) {
+    (cloud.categories || []).forEach(c => {
+      if (!isDeletedCategory(c)) {
+        catMap.set(c.slug || c.id, c);
+      }
+    });
+  } else {
+    (base.categories || []).forEach(c => {
+      if (!isDeletedCategory(c)) {
+        catMap.set(c.slug || c.id, c);
+      }
+    });
+  }
   const categories = Array.from(catMap.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
   // 6. Artworks: PREVENT DATA OVERWRITING & EXCLUDE DUMMY WORKS
@@ -331,13 +341,15 @@ export const api = {
       let consolidated = mergePortfolioData(serverData, localBase);
       await saveLocalPortfolioDataAsync(consolidated);
 
-      // Fast non-blocking background sync with Firestore so page loads instantly
-      getFirestorePortfolioData().then(async (fsData) => {
-        if (fsData && fsData.artworks && fsData.artworks.length > 0) {
-          const updated = mergePortfolioData(consolidated, fsData);
-          await saveLocalPortfolioDataAsync(updated);
-        }
-      }).catch(() => {});
+      // Only query Firestore if server has no artworks yet
+      if (!serverData.artworks || serverData.artworks.length === 0) {
+        getFirestorePortfolioData().then(async (fsData) => {
+          if (fsData && fsData.artworks && fsData.artworks.length > 0) {
+            const updated = mergePortfolioData(consolidated, fsData);
+            await saveLocalPortfolioDataAsync(updated);
+          }
+        }).catch(() => {});
+      }
 
       return consolidated;
     } catch (err: any) {
@@ -744,11 +756,14 @@ export const api = {
         const art = local.artworks.find(a => a.id === id);
         if (art) {
           art.order = idx + 1;
-          saveFirestoreArtwork(art).catch(() => {});
         }
       });
       local.artworks.sort((a, b) => (a.order || 9999) - (b.order || 9999));
       saveLocalPortfolioData(local);
+
+      // Fast atomic update of order indices in cloud Firestore
+      updateFirestoreArtworksOrder(orderedIds).catch(() => {});
+
       return res;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
@@ -757,11 +772,14 @@ export const api = {
           const art = local.artworks.find(a => a.id === id);
           if (art) {
             art.order = idx + 1;
-            saveFirestoreArtwork(art).catch(() => {});
           }
         });
         local.artworks.sort((a, b) => (a.order || 9999) - (b.order || 9999));
         await saveLocalPortfolioDataAsync(local);
+
+        // Fast atomic update of order indices in cloud Firestore
+        await updateFirestoreArtworksOrder(orderedIds).catch(() => {});
+
         return local.artworks;
       }
       throw err;

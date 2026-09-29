@@ -12,19 +12,11 @@ import {
 
 export const defaultCategories: Category[] = [
   {
-    id: 'cat-painting',
-    name: 'Painting',
-    slug: 'painting',
-    description: 'Investigations of surface tension, mineral sediment, raw earth pigments, and layered chromatic silence.',
-    order: 1,
-    coverImage: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?q=80&w=1600&auto=format&fit=crop',
-  },
-  {
     id: 'cat-drawing',
     name: 'Drawing',
     slug: 'drawing',
     description: 'Charcoal, compressed carbon, and silverpoint works on handmade gessoed rag and unprimed linen.',
-    order: 2,
+    order: 1,
     coverImage: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?q=80&w=1600&auto=format&fit=crop',
   },
   {
@@ -32,7 +24,7 @@ export const defaultCategories: Category[] = [
     name: 'Sculpture',
     slug: 'sculpture',
     description: 'Tectonic mass, cast bronze, basalt, patinated zinc, and organic stone balancing fragility against permanence.',
-    order: 3,
+    order: 2,
     coverImage: 'https://images.unsplash.com/photo-1544531586-fde5298cdd40?q=80&w=1600&auto=format&fit=crop',
   },
   {
@@ -40,8 +32,16 @@ export const defaultCategories: Category[] = [
     name: 'Digital Work',
     slug: 'digital-work',
     description: 'Generative light systems, computational spatial projections, and algorithmic pigment dissolution.',
-    order: 4,
+    order: 3,
     coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1600&auto=format&fit=crop',
+  },
+  {
+    id: 'cat-1790356731864',
+    name: 'Gesture',
+    slug: 'gesture',
+    description: 'Expressive spontaneous marks, physical momentum, and kinetic anatomy studies.',
+    order: 4,
+    coverImage: '',
   },
   {
     id: 'cat-experimental-work',
@@ -50,6 +50,22 @@ export const defaultCategories: Category[] = [
     description: 'Time-based material transformations, chemical oxidations, atmospheric weathering, and site-responsive interventions.',
     order: 5,
     coverImage: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1600&auto=format&fit=crop',
+  },
+  {
+    id: 'cat-1790394894178',
+    name: 'Watercolor',
+    slug: 'watercolor',
+    description: 'Aqueous pigments, capillary bleeding, fluid landscapes, and atmospheric washes.',
+    order: 6,
+    coverImage: '',
+  },
+  {
+    id: 'cat-1790396025362',
+    name: 'Collage',
+    slug: 'collage',
+    description: 'Tactile assemblages, found postal fragments, torn paper stratifications, and mixed media.',
+    order: 7,
+    coverImage: '',
   },
 ];
 

@@ -1,5 +1,14 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  getDocs,
+  deleteDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type {
   PortfolioData,
@@ -33,123 +42,99 @@ export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData
   const db = getDb();
   if (!db) return null;
 
-  let settings: SiteSettings | undefined;
-  let about: AboutContent | undefined;
-  let cv: CVDoc | null = null;
-  let socialLinks: SocialLink[] | undefined;
-  const artworks: Artwork[] = [];
-  const categories: Category[] = [];
-  const exhibitions: Exhibition[] = [];
-  const inquiries: ContactMessage[] = [];
-
-  // 1. Fetch site settings safely
   try {
-    const sSnap = await getDoc(doc(db, 'site_settings', 'settings'));
-    if (sSnap.exists()) {
-      settings = sSnap.data() as SiteSettings;
-    } else {
-      const pSnap = await getDoc(doc(db, 'portfolio', 'settings'));
-      if (pSnap.exists()) settings = pSnap.data() as SiteSettings;
-    }
-  } catch (err) {
-    // try fallback
-    try {
-      const pSnap = await getDoc(doc(db, 'portfolio', 'settings'));
-      if (pSnap.exists()) settings = pSnap.data() as SiteSettings;
-    } catch {}
+    const fetchWithTimeout = async () => {
+      let settings: SiteSettings | undefined;
+      let about: AboutContent | undefined;
+      let cv: CVDoc | null = null;
+      let socialLinks: SocialLink[] | undefined;
+      const artworks: Artwork[] = [];
+      const categories: Category[] = [];
+      const exhibitions: Exhibition[] = [];
+      const inquiries: ContactMessage[] = [];
+
+      const [
+        settingsRes,
+        aboutRes,
+        cvRes,
+        socialRes,
+        artworksRes,
+        categoriesRes,
+        exhibitionsRes,
+        inquiriesRes,
+      ] = await Promise.allSettled([
+        getDoc(doc(db, 'site_settings', 'settings')).then(s => s.exists() ? s.data() as SiteSettings : null),
+        getDoc(doc(db, 'about', 'main')).then(a => a.exists() ? a.data() as AboutContent : null),
+        getDoc(doc(db, 'about', 'cv')).then(c => c.exists() ? c.data() as CVDoc : null),
+        getDoc(doc(db, 'site_settings', 'socialLinks')).then(s => s.exists() ? (s.data().items as SocialLink[]) : null),
+        getDocs(collection(db, 'artworks')),
+        getDocs(collection(db, 'categories')),
+        getDocs(collection(db, 'exhibitions')),
+        getDocs(collection(db, 'inquiries')),
+      ]);
+
+      if (settingsRes.status === 'fulfilled' && settingsRes.value) {
+        settings = settingsRes.value;
+      }
+      if (aboutRes.status === 'fulfilled' && aboutRes.value) {
+        about = aboutRes.value;
+      }
+      if (cvRes.status === 'fulfilled' && cvRes.value) {
+        cv = cvRes.value;
+      }
+      if (socialRes.status === 'fulfilled' && socialRes.value) {
+        socialLinks = socialRes.value;
+      }
+      if (artworksRes.status === 'fulfilled' && artworksRes.value) {
+        artworksRes.value.forEach(d => {
+          artworks.push(d.data() as Artwork);
+        });
+      }
+      if (categoriesRes.status === 'fulfilled' && categoriesRes.value) {
+        categoriesRes.value.forEach(d => {
+          categories.push(d.data() as Category);
+        });
+      }
+      if (exhibitionsRes.status === 'fulfilled' && exhibitionsRes.value) {
+        exhibitionsRes.value.forEach(d => {
+          exhibitions.push(d.data() as Exhibition);
+        });
+      }
+      if (inquiriesRes.status === 'fulfilled' && inquiriesRes.value) {
+        inquiriesRes.value.forEach(d => {
+          inquiries.push(d.data() as ContactMessage);
+        });
+      }
+
+      const hasAnyData =
+        !!settings ||
+        !!about ||
+        artworks.length > 0 ||
+        categories.length > 0 ||
+        exhibitions.length > 0;
+
+      if (!hasAnyData) return null;
+
+      return {
+        settings,
+        about,
+        cv,
+        socialLinks,
+        artworks: artworks.length > 0 ? artworks : undefined,
+        categories: categories.length > 0 ? categories : undefined,
+        exhibitions: exhibitions.length > 0 ? exhibitions : undefined,
+        inquiries: inquiries.length > 0 ? inquiries : undefined,
+        messages: inquiries.length > 0 ? inquiries : undefined,
+      };
+    };
+
+    // Timeout race: max 5 seconds so client never hangs
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+    return await Promise.race([fetchWithTimeout(), timeoutPromise]);
+  } catch (err: any) {
+    console.warn('Firestore fetch note:', err?.message || err);
+    return null;
   }
-
-  // 2. Fetch about content safely
-  try {
-    const aSnap = await getDoc(doc(db, 'about', 'main'));
-    if (aSnap.exists()) {
-      about = aSnap.data() as AboutContent;
-    } else {
-      const pSnap = await getDoc(doc(db, 'portfolio', 'about'));
-      if (pSnap.exists()) about = pSnap.data() as AboutContent;
-    }
-  } catch {
-    try {
-      const pSnap = await getDoc(doc(db, 'portfolio', 'about'));
-      if (pSnap.exists()) about = pSnap.data() as AboutContent;
-    } catch {}
-  }
-
-  // 3. Fetch CV safely
-  try {
-    const cvSnap = await getDoc(doc(db, 'about', 'cv'));
-    if (cvSnap.exists()) {
-      cv = cvSnap.data() as CVDoc;
-    } else {
-      const pSnap = await getDoc(doc(db, 'portfolio', 'cv'));
-      if (pSnap.exists()) cv = pSnap.data() as CVDoc;
-    }
-  } catch {}
-
-  // 4. Fetch social links safely
-  try {
-    const socSnap = await getDoc(doc(db, 'site_settings', 'socialLinks'));
-    if (socSnap.exists()) {
-      socialLinks = (socSnap.data().items as SocialLink[]) || [];
-    } else {
-      const pSnap = await getDoc(doc(db, 'portfolio', 'socialLinks'));
-      if (pSnap.exists()) socialLinks = (pSnap.data().items as SocialLink[]) || [];
-    }
-  } catch {}
-
-  // 5. Fetch artworks safely (critical for user photos)
-  try {
-    const artworksSnap = await getDocs(collection(db, 'artworks'));
-    artworksSnap.forEach(d => {
-      const art = d.data() as Artwork;
-      artworks.push(art);
-    });
-  } catch (artErr) {
-    console.warn('Firestore fetch artworks error:', artErr);
-  }
-
-  // 6. Fetch categories safely
-  try {
-    const categoriesSnap = await getDocs(collection(db, 'categories'));
-    categoriesSnap.forEach(d => categories.push(d.data() as Category));
-  } catch (catErr) {
-    console.warn('Firestore fetch categories error:', catErr);
-  }
-
-  // 7. Fetch exhibitions safely
-  try {
-    const exhibitionsSnap = await getDocs(collection(db, 'exhibitions'));
-    exhibitionsSnap.forEach(d => exhibitions.push(d.data() as Exhibition));
-  } catch (exErr) {
-    console.warn('Firestore fetch exhibitions error:', exErr);
-  }
-
-  // 8. Fetch inquiries safely
-  try {
-    const inquiriesSnap = await getDocs(collection(db, 'inquiries'));
-    inquiriesSnap.forEach(d => inquiries.push(d.data() as ContactMessage));
-  } catch {}
-
-  const hasAnyData =
-    !!settings ||
-    !!about ||
-    artworks.length > 0 ||
-    categories.length > 0 ||
-    exhibitions.length > 0;
-
-  if (!hasAnyData) return null;
-
-  return {
-    settings,
-    about,
-    cv,
-    socialLinks,
-    artworks: artworks.length > 0 ? artworks : undefined,
-    categories: categories.length > 0 ? categories : undefined,
-    exhibitions: exhibitions.length > 0 ? exhibitions : undefined,
-    inquiries: inquiries.length > 0 ? inquiries : undefined,
-    messages: inquiries.length > 0 ? inquiries : undefined,
-  };
 }
 
 // Clean object recursively to remove all undefined values before saving to Firestore
@@ -356,7 +341,28 @@ export async function getFirestoreAdminCredentials(): Promise<{
   }
 }
 
-// Bulk sync entire portfolio dataset to Firestore to guarantee zero data loss
+// Fast, atomic update of artwork order numbers without re-transmitting heavy image payloads
+export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promise<void> {
+  const db = getDb();
+  if (!db || !orderedIds || orderedIds.length === 0) return;
+  try {
+    const batch = writeBatch(db);
+    orderedIds.forEach((id, index) => {
+      const artRef = doc(db, 'artworks', id);
+      batch.update(artRef, { order: index + 1 });
+    });
+    await batch.commit();
+  } catch (err) {
+    console.warn('Batch update artworks order fallback to merge set:', err);
+    for (let i = 0; i < orderedIds.length; i++) {
+      try {
+        await setDoc(doc(db, 'artworks', orderedIds[i]), { order: i + 1 }, { merge: true });
+      } catch {}
+    }
+  }
+}
+
+// Bulk sync entire portfolio dataset to Firestore to guarantee zero data loss and clean up deleted documents
 export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): Promise<{
   success: boolean;
   syncedArtworks: number;
@@ -386,25 +392,59 @@ export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): 
     await saveFirestoreCV(portfolio.cv);
   }
 
-  // 5. Artworks
-  let syncedArtworks = 0;
-  if (portfolio.artworks && portfolio.artworks.length > 0) {
-    for (const art of portfolio.artworks) {
-      await saveFirestoreArtwork(art);
-      syncedArtworks++;
+  // 5. Clean up any deleted artworks from Firestore
+  const currentArtIds = new Set((portfolio.artworks || []).map(a => a.id));
+  try {
+    const existingSnap = await getDocs(collection(db, 'artworks'));
+    for (const d of existingSnap.docs) {
+      if (!currentArtIds.has(d.id)) {
+        await deleteDoc(d.ref).catch(() => {});
+      }
     }
+  } catch (cleanupErr) {
+    console.warn('Artwork cleanup in firestore note:', cleanupErr);
   }
 
-  // 6. Categories
+  // 6. Clean up any deleted categories (e.g. Painting) from Firestore
+  const currentCatIds = new Set((portfolio.categories || []).map(c => c.id));
+  try {
+    const existingCatSnap = await getDocs(collection(db, 'categories'));
+    for (const d of existingCatSnap.docs) {
+      if (!currentCatIds.has(d.id) || d.id === 'cat-painting' || d.data().slug === 'painting') {
+        await deleteDoc(d.ref).catch(() => {});
+      }
+    }
+  } catch (cleanupCatErr) {
+    console.warn('Category cleanup in firestore note:', cleanupCatErr);
+  }
+
+  // 7. Save / Update artworks in small parallel batches
+  let syncedArtworks = 0;
+  const artworksList = portfolio.artworks || [];
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < artworksList.length; i += BATCH_SIZE) {
+    const chunk = artworksList.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      chunk.map(art =>
+        saveFirestoreArtwork(art)
+          .then(() => syncedArtworks++)
+          .catch(e => console.warn('Artwork sync error:', art.id, e))
+      )
+    );
+  }
+
+  // 8. Categories
   let syncedCategories = 0;
   if (portfolio.categories && portfolio.categories.length > 0) {
     for (const cat of portfolio.categories) {
-      await saveFirestoreCategory(cat);
-      syncedCategories++;
+      if (cat.id !== 'cat-painting' && cat.slug !== 'painting') {
+        await saveFirestoreCategory(cat);
+        syncedCategories++;
+      }
     }
   }
 
-  // 7. Exhibitions
+  // 9. Exhibitions
   let syncedExhibitions = 0;
   if (portfolio.exhibitions && portfolio.exhibitions.length > 0) {
     for (const ex of portfolio.exhibitions) {
