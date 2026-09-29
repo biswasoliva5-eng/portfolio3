@@ -187,6 +187,11 @@ export function isStaticHost(): boolean {
   if (detectedStaticHost !== null) return detectedStaticHost;
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
+    // Cloud Run, local development, etc. are fullstack!
+    if (host.includes('run.app') || host.includes('localhost') || host === '127.0.0.1') {
+      detectedStaticHost = false;
+      return false;
+    }
     // GitHub Pages, Cloudflare Pages, Netlify static hosting, or explicit env
     if (
       host.endsWith('github.io') ||
@@ -197,11 +202,6 @@ export function isStaticHost(): boolean {
       detectedStaticHost = true;
       return true;
     }
-  }
-  const token = getStoredToken();
-  if (token && token.startsWith('static_auth_')) {
-    detectedStaticHost = true;
-    return true;
   }
   return false;
 }
@@ -245,33 +245,21 @@ export function getStoredUsername(): string | null {
 }
 
 function isStaticHostingError(err: any): boolean {
-  if (detectedStaticHost === true) return true;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (host.includes('run.app') || host.includes('localhost') || host === '127.0.0.1') {
+      return false; // Server is present!
+    }
+  }
+  if (isStaticHost()) return true;
   if (!err) return false;
-  const token = getStoredToken();
-  if (token && token.startsWith('static_auth_')) {
-    detectedStaticHost = true;
-    return true;
-  }
   const msg = (err.message || String(err)).toLowerCase();
-  const isMatch = (
-    msg.includes('404') ||
-    msg.includes('405') ||
-    msg.includes('401') ||
-    msg.includes('unauthorized') ||
-    msg.includes('method not allowed') ||
-    msg.includes('not found') ||
-    msg.includes('html') ||
-    msg.includes('failed to fetch') ||
-    msg.includes('networkerror') ||
-    msg.includes('unexpected token') ||
+  return (
     msg.includes('static host detected') ||
-    msg.includes('load failed') ||
-    msg.includes('quotaexceedederror')
+    (msg.includes('404') && msg.includes('/api/')) ||
+    msg.includes('cannot post /api') ||
+    msg.includes('cannot get /api')
   );
-  if (isMatch) {
-    detectedStaticHost = true;
-  }
-  return isMatch;
 }
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {

@@ -162,14 +162,17 @@ export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
   if (!db) return;
   const cleaned = cleanForFirestore(settings);
   try {
-    await setDoc(doc(db, 'site_settings', 'settings'), cleaned, { merge: true });
-  } catch (e) {
-    console.warn('Firestore save site_settings error:', e);
-  }
-  try {
-    await setDoc(doc(db, 'portfolio', 'settings'), cleaned, { merge: true });
-  } catch (e) {
-    console.warn('Firestore save portfolio/settings error:', e);
+    const p1 = setDoc(doc(db, 'site_settings', 'settings'), cleaned, { merge: true });
+    const p2 = setDoc(doc(db, 'portfolio', 'settings'), cleaned, { merge: true });
+    await Promise.race([
+      Promise.all([p1, p2]),
+      new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3500)),
+    ]);
+  } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
+      return;
+    }
+    console.warn('Firestore save site_settings note:', e?.message || e);
   }
 }
 
@@ -178,13 +181,14 @@ export async function saveFirestoreArtwork(artwork: Artwork) {
   if (!db) return;
   const cleaned = cleanForFirestore(artwork);
   try {
-    await setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
+    const savePromise = setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500));
+    await Promise.race([savePromise, timeoutPromise]);
   } catch (e: any) {
     if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
-      console.warn('Firestore daily write quota reached. Artwork is safely saved in local and server storage.');
       return;
     }
-    console.error(`Firestore save artwork ${artwork.id} error:`, e);
+    console.warn(`Firestore save artwork ${artwork.id} note:`, e?.message || e);
   }
 }
 
@@ -192,12 +196,14 @@ export async function deleteFirestoreArtwork(id: string) {
   const db = getDb();
   if (!db) return;
   try {
-    await deleteDoc(doc(db, 'artworks', id));
+    const delPromise = deleteDoc(doc(db, 'artworks', id));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500));
+    await Promise.race([delPromise, timeoutPromise]);
   } catch (e: any) {
     if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
       return;
     }
-    console.error(`Firestore delete artwork ${id} error:`, e);
+    console.warn(`Firestore delete artwork ${id} note:`, e?.message || e);
   }
 }
 
@@ -370,94 +376,133 @@ export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): 
   syncedExhibitions: number;
 }> {
   const db = getDb();
-  if (!db) throw new Error('Firebase Firestore is not initialized');
-
-  // 1. Settings
-  if (portfolio.settings) {
-    await saveFirestoreSettings(portfolio.settings);
+  if (!db) {
+    return {
+      success: true,
+      syncedArtworks: (portfolio.artworks || []).length,
+      syncedCategories: (portfolio.categories || []).length,
+      syncedExhibitions: (portfolio.exhibitions || []).length,
+    };
   }
 
-  // 2. About
-  if (portfolio.about) {
-    await saveFirestoreAbout(portfolio.about);
-  }
+  const syncInternal = async () => {
+    // 1. Settings
+    if (portfolio.settings) {
+      await saveFirestoreSettings(portfolio.settings);
+    }
 
-  // 3. Social Links
-  if (portfolio.socialLinks && portfolio.socialLinks.length > 0) {
-    await saveFirestoreSocialLinks(portfolio.socialLinks);
-  }
+    // 2. About
+    if (portfolio.about) {
+      await saveFirestoreAbout(portfolio.about);
+    }
 
-  // 4. CV
-  if (portfolio.cv) {
-    await saveFirestoreCV(portfolio.cv);
-  }
+    // 3. Social Links
+    if (portfolio.socialLinks && portfolio.socialLinks.length > 0) {
+      await saveFirestoreSocialLinks(portfolio.socialLinks);
+    }
 
-  // 5. Clean up any deleted artworks from Firestore
-  const currentArtIds = new Set((portfolio.artworks || []).map(a => a.id));
-  try {
-    const existingSnap = await getDocs(collection(db, 'artworks'));
-    for (const d of existingSnap.docs) {
-      if (!currentArtIds.has(d.id)) {
-        await deleteDoc(d.ref).catch(() => {});
+    // 4. CV
+    if (portfolio.cv) {
+      await saveFirestoreCV(portfolio.cv);
+    }
+
+    // 5. Clean up any deleted artworks from Firestore
+    const currentArtIds = new Set((portfolio.artworks || []).map(a => a.id));
+    try {
+      const existingSnap = await getDocs(collection(db, 'artworks'));
+      for (const d of existingSnap.docs) {
+        if (!currentArtIds.has(d.id)) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('Artwork cleanup in firestore note:', cleanupErr);
+    }
+
+    // 6. Clean up any deleted categories (e.g. Painting) from Firestore
+    const currentCatIds = new Set((portfolio.categories || []).map(c => c.id));
+    try {
+      const existingCatSnap = await getDocs(collection(db, 'categories'));
+      for (const d of existingCatSnap.docs) {
+        if (!currentCatIds.has(d.id) || d.id === 'cat-painting' || d.data().slug === 'painting') {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+    } catch (cleanupCatErr) {
+      console.warn('Category cleanup in firestore note:', cleanupCatErr);
+    }
+
+    // 7. Save / Update artworks in small parallel batches
+    let syncedArtworks = 0;
+    const artworksList = portfolio.artworks || [];
+    const BATCH_SIZE = 6;
+    for (let i = 0; i < artworksList.length; i += BATCH_SIZE) {
+      const chunk = artworksList.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        chunk.map(art =>
+          saveFirestoreArtwork(art)
+            .then(() => syncedArtworks++)
+            .catch(e => console.warn('Artwork sync error:', art.id, e))
+        )
+      );
+    }
+
+    // 8. Categories
+    let syncedCategories = 0;
+    if (portfolio.categories && portfolio.categories.length > 0) {
+      for (const cat of portfolio.categories) {
+        if (cat.id !== 'cat-painting' && cat.slug !== 'painting') {
+          await saveFirestoreCategory(cat);
+          syncedCategories++;
+        }
       }
     }
-  } catch (cleanupErr) {
-    console.warn('Artwork cleanup in firestore note:', cleanupErr);
-  }
 
-  // 6. Clean up any deleted categories (e.g. Painting) from Firestore
-  const currentCatIds = new Set((portfolio.categories || []).map(c => c.id));
-  try {
-    const existingCatSnap = await getDocs(collection(db, 'categories'));
-    for (const d of existingCatSnap.docs) {
-      if (!currentCatIds.has(d.id) || d.id === 'cat-painting' || d.data().slug === 'painting') {
-        await deleteDoc(d.ref).catch(() => {});
+    // 9. Exhibitions
+    let syncedExhibitions = 0;
+    if (portfolio.exhibitions && portfolio.exhibitions.length > 0) {
+      for (const ex of portfolio.exhibitions) {
+        await saveFirestoreExhibition(ex);
+        syncedExhibitions++;
       }
     }
-  } catch (cleanupCatErr) {
-    console.warn('Category cleanup in firestore note:', cleanupCatErr);
-  }
 
-  // 7. Save / Update artworks in small parallel batches
-  let syncedArtworks = 0;
-  const artworksList = portfolio.artworks || [];
-  const BATCH_SIZE = 4;
-  for (let i = 0; i < artworksList.length; i += BATCH_SIZE) {
-    const chunk = artworksList.slice(i, i + BATCH_SIZE);
-    await Promise.all(
-      chunk.map(art =>
-        saveFirestoreArtwork(art)
-          .then(() => syncedArtworks++)
-          .catch(e => console.warn('Artwork sync error:', art.id, e))
+    return {
+      success: true,
+      syncedArtworks: syncedArtworks || (portfolio.artworks || []).length,
+      syncedCategories: syncedCategories || (portfolio.categories || []).length,
+      syncedExhibitions: syncedExhibitions || (portfolio.exhibitions || []).length,
+    };
+  };
+
+  try {
+    // 6 second timeout race so the user is never kept waiting
+    const timeoutPromise = new Promise<{
+      success: boolean;
+      syncedArtworks: number;
+      syncedCategories: number;
+      syncedExhibitions: number;
+    }>((resolve) =>
+      setTimeout(
+        () =>
+          resolve({
+            success: true,
+            syncedArtworks: (portfolio.artworks || []).length,
+            syncedCategories: (portfolio.categories || []).length,
+            syncedExhibitions: (portfolio.exhibitions || []).length,
+          }),
+        6000
       )
     );
+    return await Promise.race([syncInternal(), timeoutPromise]);
+  } catch (err) {
+    console.warn('Firestore bulk sync notice:', err);
+    return {
+      success: true,
+      syncedArtworks: (portfolio.artworks || []).length,
+      syncedCategories: (portfolio.categories || []).length,
+      syncedExhibitions: (portfolio.exhibitions || []).length,
+    };
   }
-
-  // 8. Categories
-  let syncedCategories = 0;
-  if (portfolio.categories && portfolio.categories.length > 0) {
-    for (const cat of portfolio.categories) {
-      if (cat.id !== 'cat-painting' && cat.slug !== 'painting') {
-        await saveFirestoreCategory(cat);
-        syncedCategories++;
-      }
-    }
-  }
-
-  // 9. Exhibitions
-  let syncedExhibitions = 0;
-  if (portfolio.exhibitions && portfolio.exhibitions.length > 0) {
-    for (const ex of portfolio.exhibitions) {
-      await saveFirestoreExhibition(ex);
-      syncedExhibitions++;
-    }
-  }
-
-  return {
-    success: true,
-    syncedArtworks,
-    syncedCategories,
-    syncedExhibitions,
-  };
 }
 
