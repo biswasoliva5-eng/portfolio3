@@ -40,6 +40,7 @@ import {
   getFirestoreAdminCredentials,
   syncEntirePortfolioToFirestore,
   updateFirestoreArtworksOrder,
+  updateFirestoreMasterDocument,
 } from '../lib/firestoreService';
 
 /**
@@ -109,17 +110,17 @@ export function mergePortfolioData(
     }
   });
 
-  if (cloud && Array.isArray(cloud.artworks)) {
+  if (cloud && Array.isArray(cloud.artworks) && cloud.artworks.length > 0) {
     cloud.artworks.forEach(cloudArt => {
       if (DUMMY_IDS.has(cloudArt.id)) return;
       const existing = artMap.get(cloudArt.id);
       if (existing) {
-        if ((!existing.images || existing.images.length === 0) && cloudArt.images && cloudArt.images.length > 0) {
-          existing.images = cloudArt.images;
-        }
-        if (!existing.mainImage && cloudArt.mainImage) {
-          existing.mainImage = cloudArt.mainImage;
-        }
+        artMap.set(cloudArt.id, {
+          ...existing,
+          ...cloudArt,
+          mainImage: cloudArt.mainImage || existing.mainImage,
+          images: (cloudArt.images && cloudArt.images.length > 0) ? cloudArt.images : existing.images,
+        });
       } else {
         artMap.set(cloudArt.id, { ...cloudArt });
       }
@@ -624,8 +625,9 @@ export const api = {
         local.artworks = [newArt, ...local.artworks.filter(a => a.id !== newArt.id)];
         await saveLocalPortfolioDataAsync(local);
 
-        // Sync to Cloud Firestore database
+        // Sync to Cloud Firestore database and update master document for real-time broadcast
         saveFirestoreArtwork(newArt).catch(e => console.warn('Firestore artwork sync note:', e));
+        updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
 
         return newArt;
       }
@@ -653,6 +655,7 @@ export const api = {
         local.artworks.unshift(updated);
       }
       await saveLocalPortfolioDataAsync(local);
+      updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
       return updated;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
@@ -666,8 +669,9 @@ export const api = {
           };
           await saveLocalPortfolioDataAsync(local);
 
-          // Sync to Cloud Firestore database
+          // Sync to Cloud Firestore database and update master document
           saveFirestoreArtwork(local.artworks[idx]).catch(e => console.warn('Firestore artwork sync note:', e));
+          updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
 
           return local.artworks[idx];
         }
@@ -686,6 +690,7 @@ export const api = {
       const local = await getLocalPortfolioDataAsync();
       local.artworks = local.artworks.filter(a => a.id !== id);
       await saveLocalPortfolioDataAsync(local);
+      updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
       return res;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
@@ -693,6 +698,7 @@ export const api = {
         local.artworks = local.artworks.filter(a => a.id !== id);
         await saveLocalPortfolioDataAsync(local);
         deleteFirestoreArtwork(id).catch(() => {});
+        updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
         return { success: true };
       }
       throw err;
@@ -711,6 +717,7 @@ export const api = {
         if (idx !== -1) {
           local.artworks[idx].isFeatured = !local.artworks[idx].isFeatured;
           saveLocalPortfolioData(local);
+          updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
           return local.artworks[idx];
         }
       }
@@ -736,6 +743,7 @@ export const api = {
 
       // Fast atomic update of order indices in cloud Firestore
       updateFirestoreArtworksOrder(orderedIds).catch(() => {});
+      updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
 
       return res;
     } catch (err: any) {
@@ -752,6 +760,7 @@ export const api = {
 
         // Fast atomic update of order indices in cloud Firestore
         await updateFirestoreArtworksOrder(orderedIds).catch(() => {});
+        updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
 
         return local.artworks;
       }

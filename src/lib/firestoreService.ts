@@ -10,6 +10,7 @@ import {
   getDocs,
   deleteDoc,
   writeBatch,
+  onSnapshot,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type {
@@ -30,7 +31,7 @@ try {
   setLogLevel('error');
 } catch {}
 
-function getDb() {
+export function getDb() {
   if (dbInstance) return dbInstance;
   try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -54,11 +55,59 @@ function getDb() {
   }
 }
 
+/**
+ * Real-time listener for GitHub Pages & static hosting.
+ * Automatically broadcasts updates to all connected visitors instantly.
+ */
+export function subscribeToFirestorePortfolio(
+  onData: (data: Partial<PortfolioData>) => void,
+  onError?: (err: any) => void
+): () => void {
+  const db = getDb();
+  if (!db) return () => {};
+
+  try {
+    const unsub = onSnapshot(
+      doc(db, 'portfolio', 'main'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const rawData = docSnap.data() as Partial<PortfolioData>;
+          if (rawData && (rawData.artworks?.length || rawData.settings || rawData.categories?.length)) {
+            onData(rawData);
+          }
+        }
+      },
+      (err) => {
+        console.warn('Realtime Firestore subscription note:', err?.message || err);
+        if (onError) onError(err);
+      }
+    );
+    return unsub;
+  } catch (err) {
+    console.warn('Failed to subscribe to Firestore realtime stream:', err);
+    return () => {};
+  }
+}
+
 export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData> | null> {
   const db = getDb();
   if (!db) return null;
 
   try {
+    // 1. Fast read from consolidated master doc (1 read unit)
+    try {
+      const mainSnap = await getDoc(doc(db, 'portfolio', 'main'));
+      if (mainSnap.exists()) {
+        const pData = mainSnap.data() as Partial<PortfolioData>;
+        if (pData && (pData.artworks?.length || pData.settings || pData.categories?.length)) {
+          return pData;
+        }
+      }
+    } catch (mainErr) {
+      console.warn('Firestore portfolio/main fetch fallback:', mainErr);
+    }
+
+    // 2. Fallback to reading individual collections
     const fetchWithTimeout = async () => {
       let settings: SiteSettings | undefined;
       let about: AboutContent | undefined;
@@ -144,7 +193,6 @@ export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData
       };
     };
 
-    // Timeout race: max 5 seconds so client never hangs
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
     return await Promise.race([fetchWithTimeout(), timeoutPromise]);
   } catch (err: any) {
@@ -384,6 +432,18 @@ export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promis
   }
 }
 
+export async function updateFirestoreMasterDocument(partialUpdate: Partial<PortfolioData>): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const cleaned = cleanForFirestore(partialUpdate);
+  try {
+    await setDoc(doc(db, 'portfolio', 'main'), cleaned, { merge: true });
+  } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) return;
+    console.warn('Firestore master doc update note:', e?.message || e);
+  }
+}
+
 // Bulk sync entire portfolio dataset to Firestore to guarantee zero data loss and clean up deleted documents
 export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): Promise<{
   success: boolean;
@@ -402,6 +462,24 @@ export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): 
   }
 
   const syncInternal = async () => {
+    // 0. Update master real-time document
+    try {
+      const masterData = cleanForFirestore({
+        settings: portfolio.settings,
+        about: portfolio.about,
+        cv: portfolio.cv,
+        socialLinks: portfolio.socialLinks,
+        artworks: portfolio.artworks,
+        categories: portfolio.categories,
+        exhibitions: portfolio.exhibitions,
+        years: portfolio.years,
+        updatedAt: new Date().toISOString(),
+      });
+      await setDoc(doc(db, 'portfolio', 'main'), masterData, { merge: true });
+    } catch (mErr) {
+      console.warn('Firestore master doc sync note:', mErr);
+    }
+
     // 1. Settings
     if (portfolio.settings) {
       await saveFirestoreSettings(portfolio.settings);

@@ -9,7 +9,9 @@ import {
   CVDoc,
   SocialLink,
 } from '../types';
-import { api, getStoredToken, getStoredUsername, clearStoredToken } from '../api/client';
+import { api, getStoredToken, getStoredUsername, clearStoredToken, mergePortfolioData } from '../api/client';
+import { subscribeToFirestorePortfolio } from '../lib/firestoreService';
+import { saveLocalPortfolioDataAsync } from '../data/defaultPortfolioData';
 
 interface Toast {
   id: string;
@@ -243,6 +245,26 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     refreshData();
     verifyAuth();
+
+    // Real-time Firestore stream listener for instantaneous updates across all browsers
+    const unsubscribe = subscribeToFirestorePortfolio(
+      (liveFsData) => {
+        setData(prev => {
+          if (!prev) return null;
+          const merged = mergePortfolioData(prev, liveFsData);
+          saveLocalPortfolioDataAsync(merged).catch(() => {});
+          return merged;
+        });
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Realtime sync status:', err?.message || err);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
   }, [refreshData, verifyAuth]);
 
   return (
