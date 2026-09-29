@@ -318,11 +318,11 @@ export const api = {
     if (!isStaticHost()) {
       try {
         const serverData = await request<PortfolioData>('/api/portfolio/all');
-        if (serverData && Array.isArray(serverData.artworks) && serverData.artworks.length > 0) {
-          await saveLocalPortfolioDataAsync(serverData);
-          return serverData;
+        if (serverData) {
+          const merged = mergePortfolioData(localBase, serverData);
+          await saveLocalPortfolioDataAsync(merged);
+          return merged;
         }
-        return serverData || localBase;
       } catch (err: any) {
         console.warn('Backend server fetch note:', err?.message || err);
       }
