@@ -6,7 +6,7 @@
   "homepage": "https://biswasoliva5-eng.github.io/portfolio3",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "node -e \"const fs=require('fs'); if(fs.existsSync('uploads')){if(!fs.existsSync('public/uploads'))fs.mkdirSync('public/uploads',{recursive:true});fs.cpSync('uploads','public/uploads',{recursive:true})}\" && vite build",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "start": "node server.ts",

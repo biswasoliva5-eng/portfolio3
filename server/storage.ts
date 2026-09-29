@@ -3,8 +3,25 @@ import path from 'path';
 import multer from 'multer';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+const PUBLIC_UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+if (!fs.existsSync(PUBLIC_UPLOAD_DIR)) {
+  fs.mkdirSync(PUBLIC_UPLOAD_DIR, { recursive: true });
+}
+
+function syncToPublic(filename: string) {
+  try {
+    const src = path.join(UPLOAD_DIR, filename);
+    const dst = path.join(PUBLIC_UPLOAD_DIR, filename);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, dst);
+    }
+  } catch (e) {
+    console.warn('Sync to public uploads warning:', e);
+  }
 }
 
 // Multer storage setup
@@ -16,7 +33,8 @@ const storage = multer.diskStorage({
     const ext = path.extname(file.originalname).toLowerCase();
     const safeBase = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-    cb(null, `${safeBase}-${uniqueSuffix}${ext}`);
+    const filename = `${safeBase}-${uniqueSuffix}${ext}`;
+    cb(null, filename);
   },
 });
 
@@ -76,6 +94,7 @@ export class LocalStorageProvider implements IStorageProvider {
     const filePath = path.join(UPLOAD_DIR, filename);
 
     await fs.promises.writeFile(filePath, buffer);
+    syncToPublic(filename);
     return `/uploads/${filename}`;
   }
 
@@ -86,10 +105,14 @@ export class LocalStorageProvider implements IStorageProvider {
       }
       const filename = path.basename(filenameOrUrl);
       const filePath = path.join(UPLOAD_DIR, filename);
+      const publicPath = path.join(PUBLIC_UPLOAD_DIR, filename);
       if (fs.existsSync(filePath)) {
         await fs.promises.unlink(filePath);
-        return true;
       }
+      if (fs.existsSync(publicPath)) {
+        await fs.promises.unlink(publicPath);
+      }
+      return true;
     } catch (e) {
       console.error('Failed to delete file:', e);
     }

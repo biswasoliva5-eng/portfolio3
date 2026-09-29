@@ -291,6 +291,11 @@ async function startServer() {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded.' });
       }
+      const publicUploads = path.join(process.cwd(), 'public', 'uploads');
+      if (!fs.existsSync(publicUploads)) fs.mkdirSync(publicUploads, { recursive: true });
+      try {
+        fs.copyFileSync(req.file.path, path.join(publicUploads, req.file.filename));
+      } catch {}
       const url = storageProvider.getFileUrl(req.file.filename);
       res.json({
         success: true,
@@ -311,6 +316,13 @@ async function startServer() {
       if (!files || files.length === 0) {
         return res.status(400).json({ error: 'No files uploaded.' });
       }
+      const publicUploads = path.join(process.cwd(), 'public', 'uploads');
+      if (!fs.existsSync(publicUploads)) fs.mkdirSync(publicUploads, { recursive: true });
+      files.forEach(f => {
+        try {
+          fs.copyFileSync(f.path, path.join(publicUploads, f.filename));
+        } catch {}
+      });
       const uploaded = files.map((f, index) => ({
         id: `img-${Date.now()}-${index}`,
         filename: f.filename,
