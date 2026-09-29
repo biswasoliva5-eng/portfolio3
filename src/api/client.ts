@@ -333,6 +333,30 @@ export const api = {
 
   syncAllToCloud: async () => {
     const current = getLocalPortfolioData();
+    if (!isStaticHost()) {
+      try {
+        if (current.artworks && current.artworks.length > 0) {
+          await request('/api/admin/artworks/batch-sync', {
+            method: 'POST',
+            body: JSON.stringify({ artworks: current.artworks }),
+          });
+        }
+        if (current.settings) {
+          await request('/api/admin/settings', {
+            method: 'PUT',
+            body: JSON.stringify(current.settings),
+          });
+        }
+        if (current.about) {
+          await request('/api/admin/about', {
+            method: 'PUT',
+            body: JSON.stringify(current.about),
+          });
+        }
+      } catch (e) {
+        console.warn('Sync to server disk note:', e);
+      }
+    }
     return syncEntirePortfolioToFirestore(current);
   },
 
@@ -575,39 +599,55 @@ export const api = {
 
   // Artwork Management
   addArtwork: async (artwork: Partial<Artwork>): Promise<Artwork> => {
-    const created: Artwork = {
-      id: artwork.id || `art-${Date.now()}`,
-      slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-      title: artwork.title || 'Untitled Work',
-      year: artwork.year || new Date().getFullYear(),
-      categorySlug: artwork.categorySlug || 'sculpture',
-      categoryName: artwork.categoryName || 'Sculpture',
-      medium: artwork.medium || '',
-      dimensions: artwork.dimensions || '',
-      description: artwork.description || '',
-      mainImage: artwork.mainImage || '',
-      images: artwork.images || [],
-      isFeatured: artwork.isFeatured || false,
-      notes: artwork.notes || '',
-      videoUrl: artwork.videoUrl || '',
-      videoTitle: artwork.videoTitle || '',
-      mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
-      order: artwork.order || 9999,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...artwork,
-    };
+    let created: Artwork | null = null;
+    try {
+      if (!isStaticHost()) {
+        created = await request<Artwork>('/api/admin/artworks', {
+          method: 'POST',
+          body: JSON.stringify(artwork),
+        });
+      }
+    } catch (serverErr) {
+      console.warn('Backend server artwork post note:', serverErr);
+    }
+
+    if (!created) {
+      created = {
+        id: artwork.id || `art-${Date.now()}`,
+        slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        title: artwork.title || 'Untitled Work',
+        year: artwork.year || new Date().getFullYear(),
+        categorySlug: artwork.categorySlug || 'sculpture',
+        categoryName: artwork.categoryName || 'Sculpture',
+        medium: artwork.medium || '',
+        dimensions: artwork.dimensions || '',
+        description: artwork.description || '',
+        mainImage: artwork.mainImage || '',
+        images: artwork.images || [],
+        isFeatured: artwork.isFeatured || false,
+        notes: artwork.notes || '',
+        videoUrl: artwork.videoUrl || '',
+        videoTitle: artwork.videoTitle || '',
+        mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
+        order: artwork.order || 9999,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...artwork,
+      };
+    }
 
     const local = await getLocalPortfolioDataAsync();
-    local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
+    local.artworks = [created, ...local.artworks.filter(a => a.id !== created!.id)];
     await saveLocalPortfolioDataAsync(local);
 
-    // Non-blocking background server sync attempt
+    // Also batch sync to server to ensure server db.json is updated
     if (!isStaticHost()) {
-      request('/api/admin/artworks', {
-        method: 'POST',
-        body: JSON.stringify(created),
-      }).catch(() => {});
+      try {
+        await request('/api/admin/artworks/batch-sync', {
+          method: 'POST',
+          body: JSON.stringify({ artworks: local.artworks }),
+        });
+      } catch {}
     }
 
     return created;
@@ -618,10 +658,20 @@ export const api = {
   },
 
   updateArtwork: async (id: string, updates: Partial<Artwork>): Promise<Artwork> => {
+    let updated: Artwork | null = null;
+    try {
+      if (!isStaticHost()) {
+        updated = await request<Artwork>(`/api/admin/artworks/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updates),
+        });
+      }
+    } catch (serverErr) {
+      console.warn('Backend server update note:', serverErr);
+    }
+
     const local = await getLocalPortfolioDataAsync();
     const idx = local.artworks.findIndex(a => a.id === id);
-    let updated: Artwork;
-
     if (idx !== -1) {
       updated = {
         ...local.artworks[idx],
@@ -629,6 +679,8 @@ export const api = {
         updatedAt: new Date().toISOString(),
       };
       local.artworks[idx] = updated;
+    } else if (updated) {
+      local.artworks.unshift(updated);
     } else {
       updated = {
         id,
@@ -658,24 +710,39 @@ export const api = {
     await saveLocalPortfolioDataAsync(local);
 
     if (!isStaticHost()) {
-      request(`/api/admin/artworks/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(updates),
-      }).catch(() => {});
+      try {
+        await request('/api/admin/artworks/batch-sync', {
+          method: 'POST',
+          body: JSON.stringify({ artworks: local.artworks }),
+        });
+      } catch {}
     }
 
     return updated;
   },
 
   deleteArtwork: async (id: string) => {
+    try {
+      if (!isStaticHost()) {
+        await request<{ success: boolean }>(`/api/admin/artworks/${id}`, {
+          method: 'DELETE',
+        });
+      }
+    } catch (serverErr) {
+      console.warn('Backend server delete note:', serverErr);
+    }
+
     const local = await getLocalPortfolioDataAsync();
     local.artworks = local.artworks.filter(a => a.id !== id);
     await saveLocalPortfolioDataAsync(local);
 
     if (!isStaticHost()) {
-      request(`/api/admin/artworks/${id}`, {
-        method: 'DELETE',
-      }).catch(() => {});
+      try {
+        await request('/api/admin/artworks/batch-sync', {
+          method: 'POST',
+          body: JSON.stringify({ artworks: local.artworks }),
+        });
+      } catch {}
     }
 
     return { success: true };
