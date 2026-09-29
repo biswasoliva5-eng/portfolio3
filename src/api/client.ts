@@ -102,31 +102,26 @@ export function mergePortfolioData(
   ]);
 
   const artMap = new Map<string, Artwork>();
-  const hasCloudArtworks = Array.isArray(cloud.artworks) && cloud.artworks.length > 0;
 
-  if (hasCloudArtworks) {
-    (cloud.artworks || []).forEach(cloudArt => {
-      if (!DUMMY_IDS.has(cloudArt.id)) {
-        artMap.set(cloudArt.id, { ...cloudArt });
-      }
-    });
+  (base.artworks || []).forEach(baseArt => {
+    if (!DUMMY_IDS.has(baseArt.id)) {
+      artMap.set(baseArt.id, { ...baseArt });
+    }
+  });
 
-    (base.artworks || []).forEach(baseArt => {
-      if (DUMMY_IDS.has(baseArt.id)) return;
-      const existing = artMap.get(baseArt.id);
+  if (cloud && Array.isArray(cloud.artworks)) {
+    cloud.artworks.forEach(cloudArt => {
+      if (DUMMY_IDS.has(cloudArt.id)) return;
+      const existing = artMap.get(cloudArt.id);
       if (existing) {
-        if ((!existing.images || existing.images.length === 0) && baseArt.images && baseArt.images.length > 0) {
-          existing.images = baseArt.images;
+        if ((!existing.images || existing.images.length === 0) && cloudArt.images && cloudArt.images.length > 0) {
+          existing.images = cloudArt.images;
         }
-        if (!existing.mainImage && baseArt.mainImage) {
-          existing.mainImage = baseArt.mainImage;
+        if (!existing.mainImage && cloudArt.mainImage) {
+          existing.mainImage = cloudArt.mainImage;
         }
-      }
-    });
-  } else {
-    (base.artworks || []).forEach(art => {
-      if (!DUMMY_IDS.has(art.id)) {
-        artMap.set(art.id, { ...art });
+      } else {
+        artMap.set(cloudArt.id, { ...cloudArt });
       }
     });
   }
@@ -322,24 +317,15 @@ export const api = {
       return localBase;
     }
 
-    // 3. If running with Node.js backend server
+    // 3. If running with Node.js backend server (Development & Cloud Run)
     try {
       const serverData = await request<PortfolioData>('/api/portfolio/all');
-      // Merge serverData with localBase (IndexedDB cache) so nothing uploaded locally is ever lost
-      let consolidated = mergePortfolioData(serverData, localBase);
-      await saveLocalPortfolioDataAsync(consolidated);
-
-      // Only query Firestore if server has no artworks yet
-      if (!serverData.artworks || serverData.artworks.length === 0) {
-        getFirestorePortfolioData().then(async (fsData) => {
-          if (fsData && fsData.artworks && fsData.artworks.length > 0) {
-            const updated = mergePortfolioData(consolidated, fsData);
-            await saveLocalPortfolioDataAsync(updated);
-          }
-        }).catch(() => {});
+      if (serverData && Array.isArray(serverData.artworks) && serverData.artworks.length > 0) {
+        // Server database is the single source of truth for all visitors
+        await saveLocalPortfolioDataAsync(serverData);
+        return serverData;
       }
-
-      return consolidated;
+      return serverData || localBase;
     } catch (err: any) {
       if (isStaticHostingError(err)) {
         try {
@@ -352,9 +338,8 @@ export const api = {
         } catch (fsErr) {
           console.warn('Cloud Firestore fetch fallback to local:', fsErr);
         }
-        return localBase;
       }
-      throw err;
+      return localBase;
     }
   },
 
