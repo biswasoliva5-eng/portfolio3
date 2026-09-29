@@ -100,6 +100,8 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
     <img
       src={resolvedSrc}
       alt={alt}
+      loading="lazy"
+      decoding="async"
       className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'}`}
       onError={() => {
         // If image failed to load, display fallback

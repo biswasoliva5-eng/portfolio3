@@ -517,6 +517,14 @@ function getInitialDatabase(): DatabaseSchema {
   };
 }
 
+const DUMMY_ART_IDS = new Set([
+  'art-p1', 'art-p2', 'art-p3',
+  'art-d1', 'art-d2',
+  'art-s1', 'art-s2',
+  'art-dw1', 'art-dw2',
+  'art-exp1', 'art-exp2'
+]);
+
 class PortfolioDatabase {
   private data: DatabaseSchema;
 
@@ -531,9 +539,13 @@ class PortfolioDatabase {
         const parsed = JSON.parse(raw);
         // Ensure all top-level keys exist in case of schema additions
         const initial = getInitialDatabase();
+        const loadedArtworks = Array.isArray(parsed.artworks)
+          ? parsed.artworks.filter((a: any) => a && !DUMMY_ART_IDS.has(a.id))
+          : [];
         return {
           ...initial,
           ...parsed,
+          artworks: loadedArtworks.length > 0 ? loadedArtworks : (parsed.artworks || []),
           admin: parsed.admin || initial.admin,
           settings: { ...initial.settings, ...(parsed.settings || {}) },
           about: { ...initial.about, ...(parsed.about || {}) },
@@ -570,14 +582,18 @@ class PortfolioDatabase {
     return {
       settings: this.data.settings,
       categories: [...this.data.categories].sort((a, b) => (a.order || 0) - (b.order || 0)),
-      artworks: [...this.data.artworks].sort((a, b) => {
-        if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
-          return a.order - b.order;
-        }
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
-      }),
+      artworks: [...this.data.artworks]
+        .filter(a => !DUMMY_ART_IDS.has(a.id))
+        .sort((a, b) => {
+          const orderA = typeof a.order === 'number' ? a.order : 999999;
+          const orderB = typeof b.order === 'number' ? b.order : 999999;
+          if (orderA !== orderB) {
+            return orderA - orderB;
+          }
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        }),
       years: sortedYears,
       exhibitions: [...this.data.exhibitions].sort((a, b) => (a.order || 0) - (b.order || 0)),
       about: this.data.about,
@@ -636,15 +652,29 @@ class PortfolioDatabase {
   }
 
   // Artworks
+  public setAllArtworks(artworks: Artwork[]): void {
+    this.data.artworks = artworks.filter(a => !DUMMY_ART_IDS.has(a.id));
+    this.saveToFile();
+  }
+
+  public setAllCategories(categories: Category[]): void {
+    this.data.categories = categories;
+    this.saveToFile();
+  }
+
   public getArtworks(): Artwork[] {
-    return [...this.data.artworks].sort((a, b) => {
-      if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
-        return a.order - b.order;
-      }
-      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return timeB - timeA;
-    });
+    return [...this.data.artworks]
+      .filter(a => !DUMMY_ART_IDS.has(a.id))
+      .sort((a, b) => {
+        const orderA = typeof a.order === 'number' ? a.order : 999999;
+        const orderB = typeof b.order === 'number' ? b.order : 999999;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
   }
 
   public getArtworkBySlug(slug: string): Artwork | undefined {

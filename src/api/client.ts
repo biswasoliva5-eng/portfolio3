@@ -82,40 +82,57 @@ export function mergePortfolioData(
   });
   const categories = Array.from(catMap.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
-  // 6. Artworks: PREVENT DATA OVERWRITING & IMAGE LOSS
+  // 6. Artworks: PREVENT DATA OVERWRITING & EXCLUDE DUMMY WORKS
+  const DUMMY_IDS = new Set([
+    'art-p1', 'art-p2', 'art-p3',
+    'art-d1', 'art-d2',
+    'art-s1', 'art-s2',
+    'art-dw1', 'art-dw2',
+    'art-exp1', 'art-exp2'
+  ]);
+
   const artMap = new Map<string, Artwork>();
+  const hasCloudArtworks = Array.isArray(cloud.artworks) && cloud.artworks.length > 0;
 
-  // Add all base artworks first
-  (base.artworks || []).forEach(art => {
-    artMap.set(art.id, art);
-  });
+  if (hasCloudArtworks) {
+    (cloud.artworks || []).forEach(cloudArt => {
+      if (!DUMMY_IDS.has(cloudArt.id)) {
+        artMap.set(cloudArt.id, { ...cloudArt });
+      }
+    });
 
-  // Overlay cloud artworks from Firestore
-  (cloud.artworks || []).forEach(cloudArt => {
-    const existing = artMap.get(cloudArt.id);
-    if (!existing) {
-      // User created new artwork in cloud -> preserve it!
-      artMap.set(cloudArt.id, cloudArt);
-    } else {
-      // Artwork exists in both: merge fields without losing photos
-      artMap.set(cloudArt.id, {
-        ...existing,
-        ...cloudArt,
-        images:
-          cloudArt.images && cloudArt.images.length > 0 ? cloudArt.images : existing.images,
-        mainImage: cloudArt.mainImage || existing.mainImage,
-      });
-    }
-  });
+    (base.artworks || []).forEach(baseArt => {
+      if (DUMMY_IDS.has(baseArt.id)) return;
+      const existing = artMap.get(baseArt.id);
+      if (existing) {
+        if ((!existing.images || existing.images.length === 0) && baseArt.images && baseArt.images.length > 0) {
+          existing.images = baseArt.images;
+        }
+        if (!existing.mainImage && baseArt.mainImage) {
+          existing.mainImage = baseArt.mainImage;
+        }
+      }
+    });
+  } else {
+    (base.artworks || []).forEach(art => {
+      if (!DUMMY_IDS.has(art.id)) {
+        artMap.set(art.id, { ...art });
+      }
+    });
+  }
 
-  const artworks = Array.from(artMap.values()).sort((a, b) => {
-    if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
-      return a.order - b.order;
-    }
-    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return timeB - timeA;
-  });
+  const artworks = Array.from(artMap.values())
+    .filter(a => !DUMMY_IDS.has(a.id))
+    .sort((a, b) => {
+      const orderA = typeof a.order === 'number' ? a.order : 999999;
+      const orderB = typeof b.order === 'number' ? b.order : 999999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
 
   // 7. Exhibitions
   const exMap = new Map<string, Exhibition>();
@@ -312,15 +329,16 @@ export const api = {
       const serverData = await request<PortfolioData>('/api/portfolio/all');
       // Merge serverData with localBase (IndexedDB cache) so nothing uploaded locally is ever lost
       let consolidated = mergePortfolioData(serverData, localBase);
-      try {
-        const fsData = await getFirestorePortfolioData();
-        if (fsData) {
-          consolidated = mergePortfolioData(consolidated, fsData);
-        }
-      } catch (fsSyncErr) {
-        // non-blocking
-      }
       await saveLocalPortfolioDataAsync(consolidated);
+
+      // Fast non-blocking background sync with Firestore so page loads instantly
+      getFirestorePortfolioData().then(async (fsData) => {
+        if (fsData && fsData.artworks && fsData.artworks.length > 0) {
+          const updated = mergePortfolioData(consolidated, fsData);
+          await saveLocalPortfolioDataAsync(updated);
+        }
+      }).catch(() => {});
+
       return consolidated;
     } catch (err: any) {
       if (isStaticHostingError(err)) {

@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.ts';
 import {
@@ -14,12 +15,14 @@ import {
 } from './server/auth.ts';
 import type { AuthenticatedRequest } from './server/auth.ts';
 import { upload, storageProvider } from './server/storage.ts';
+import { syncFirestoreToLocalDb } from './server/cloudSync.ts';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Middleware
+  // Middleware - Enable gzip/deflate compression for fast mobile responses
+  app.use(compression() as any);
   app.use(express.json({ limit: '250mb' }));
   app.use(express.urlencoded({ extended: true, limit: '250mb' }));
 
@@ -754,6 +757,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Oliva Biswas Portfolio Server running on http://0.0.0.0:${PORT}`);
+    syncFirestoreToLocalDb(db).catch(() => {});
   });
 }
 
