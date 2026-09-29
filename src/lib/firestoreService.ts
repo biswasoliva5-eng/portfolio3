@@ -1,6 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
+  initializeFirestore,
   getFirestore,
+  setLogLevel,
   doc,
   setDoc,
   getDoc,
@@ -24,13 +26,27 @@ import type {
 
 let dbInstance: ReturnType<typeof getFirestore> | null = null;
 
+try {
+  setLogLevel('error');
+} catch {}
+
 function getDb() {
   if (dbInstance) return dbInstance;
   try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    dbInstance = firebaseConfig.firestoreDatabaseId
-      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-      : getFirestore(app);
+    try {
+      dbInstance = initializeFirestore(
+        app,
+        {
+          experimentalAutoDetectLongPolling: true,
+        },
+        firebaseConfig.firestoreDatabaseId || undefined
+      );
+    } catch {
+      dbInstance = firebaseConfig.firestoreDatabaseId
+        ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+        : getFirestore(app);
+    }
     return dbInstance;
   } catch (err) {
     console.warn('Firebase initialization warning:', err);
