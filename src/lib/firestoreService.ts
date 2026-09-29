@@ -34,6 +34,7 @@ import type {
 
 let dbInstance: ReturnType<typeof getFirestore> | null = null;
 let storageInstance: ReturnType<typeof getStorage> | null = null;
+let isFirestoreQuotaExceeded = false;
 
 try {
   setLogLevel('error');
@@ -138,9 +139,7 @@ export async function uploadToFirebaseStorage(
 }
 
 /**
- * Realtime Firestore Listener on Public View & Admin:
- * Subscribes to artworks, categories, exhibitions, and settings collections.
- * Whenever documents are created/updated/deleted from Admin, changes instantly reflect on Public View.
+ * Realtime Firestore Listener on Public View & Admin
  */
 export function subscribeToFirestorePortfolio(
   onUpdate: (data: Partial<PortfolioData>) => void,
@@ -163,7 +162,6 @@ export function subscribeToFirestorePortfolio(
   };
 
   try {
-    // 1. Realtime Artworks Listener
     const unsubArtworks = onSnapshot(
       collection(db, 'artworks'),
       (snapshot) => {
@@ -175,13 +173,14 @@ export function subscribeToFirestorePortfolio(
         notify({ artworks });
       },
       (err) => {
-        console.warn('Realtime artworks listener notice:', err.message);
+        if (err.message.includes('resource-exhausted') || err.message.includes('RESOURCE_EXHAUSTED')) {
+          isFirestoreQuotaExceeded = true;
+        }
         if (onError) onError(err);
       }
     );
     unsubs.push(unsubArtworks);
 
-    // 2. Realtime Categories Listener
     const unsubCategories = onSnapshot(
       collection(db, 'categories'),
       (snapshot) => {
@@ -194,13 +193,10 @@ export function subscribeToFirestorePortfolio(
         });
         notify({ categories });
       },
-      (err) => {
-        console.warn('Realtime categories listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubCategories);
 
-    // 3. Realtime Exhibitions Listener
     const unsubExhibitions = onSnapshot(
       collection(db, 'exhibitions'),
       (snapshot) => {
@@ -210,13 +206,10 @@ export function subscribeToFirestorePortfolio(
         });
         notify({ exhibitions });
       },
-      (err) => {
-        console.warn('Realtime exhibitions listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubExhibitions);
 
-    // 4. Realtime Site Settings Listener
     const unsubSettings = onSnapshot(
       doc(db, 'site_settings', 'settings'),
       (snapshot) => {
@@ -224,13 +217,10 @@ export function subscribeToFirestorePortfolio(
           notify({ settings: snapshot.data() as SiteSettings });
         }
       },
-      (err) => {
-        console.warn('Realtime settings listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubSettings);
 
-    // 5. Realtime About Listener
     const unsubAbout = onSnapshot(
       doc(db, 'about', 'main'),
       (snapshot) => {
@@ -238,13 +228,10 @@ export function subscribeToFirestorePortfolio(
           notify({ about: snapshot.data() as AboutContent });
         }
       },
-      (err) => {
-        console.warn('Realtime about listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubAbout);
 
-    // 6. Realtime CV Listener
     const unsubCV = onSnapshot(
       doc(db, 'about', 'cv'),
       (snapshot) => {
@@ -252,13 +239,10 @@ export function subscribeToFirestorePortfolio(
           notify({ cv: snapshot.data() as CVDoc });
         }
       },
-      (err) => {
-        console.warn('Realtime CV listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubCV);
 
-    // 7. Realtime Social Links Listener
     const unsubSocial = onSnapshot(
       doc(db, 'site_settings', 'socialLinks'),
       (snapshot) => {
@@ -267,13 +251,10 @@ export function subscribeToFirestorePortfolio(
           notify({ socialLinks: items });
         }
       },
-      (err) => {
-        console.warn('Realtime social links listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubSocial);
 
-    // 8. Realtime Inquiries Listener
     const unsubInquiries = onSnapshot(
       collection(db, 'inquiries'),
       (snapshot) => {
@@ -283,13 +264,11 @@ export function subscribeToFirestorePortfolio(
         });
         notify({ inquiries, messages: inquiries });
       },
-      (err) => {
-        console.warn('Realtime inquiries listener notice:', err.message);
-      }
+      () => {}
     );
     unsubs.push(unsubInquiries);
   } catch (setupErr: any) {
-    console.warn('Failed to set up Firestore realtime listeners:', setupErr);
+    console.warn('Realtime listeners notice:', setupErr);
   }
 
   return () => {
@@ -302,6 +281,7 @@ export function subscribeToFirestorePortfolio(
 }
 
 export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData> | null> {
+  if (isFirestoreQuotaExceeded) return null;
   const db = getDb();
   if (!db) return null;
 
@@ -391,16 +371,16 @@ export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData
       };
     };
 
-    // Timeout race: max 6 seconds so client never hangs
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
     return await Promise.race([fetchWithTimeout(), timeoutPromise]);
   } catch (err: any) {
-    console.warn('Firestore fetch note:', err?.message || err);
+    if (err?.code === 'resource-exhausted' || String(err).includes('RESOURCE_EXHAUSTED')) {
+      isFirestoreQuotaExceeded = true;
+    }
     return null;
   }
 }
 
-// Clean object recursively to remove all undefined values before saving to Firestore
 export function cleanForFirestore<T>(data: T): T {
   if (data === null || data === undefined) return null as unknown as T;
   if (Array.isArray(data)) {
@@ -421,6 +401,7 @@ export function cleanForFirestore<T>(data: T): T {
 }
 
 export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(settings);
@@ -430,87 +411,96 @@ export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
     await Promise.all([p1, p2]);
   } catch (e: any) {
     if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
       return;
     }
-    console.error('Firestore save site_settings error:', e);
   }
 }
 
 export async function saveFirestoreArtwork(artwork: Artwork) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
-  if (!db) {
-    return;
-  }
+  if (!db) return;
   const cleaned = cleanForFirestore(artwork);
   try {
     await setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
   } catch (e: any) {
     if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
-      console.warn('Firestore quota exceeded. Artwork saved locally.');
+      isFirestoreQuotaExceeded = true;
       return;
     }
-    console.error(`Firestore save artwork ${artwork.id} error:`, e);
   }
 }
 
 export async function deleteFirestoreArtwork(id: string) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'artworks', id));
   } catch (e: any) {
-    console.error(`Firestore delete artwork ${id} error:`, e);
-    throw new Error(`Firestore artwork deletion failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function saveFirestoreCategory(category: Category) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(category);
   try {
     await setDoc(doc(db, 'categories', category.id), cleaned, { merge: true });
   } catch (e: any) {
-    console.error('Firestore save category error:', e);
-    throw new Error(`Firestore category save failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function deleteFirestoreCategory(id: string) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'categories', id));
   } catch (e: any) {
-    console.error('Firestore delete category error:', e);
-    throw new Error(`Firestore category deletion failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function saveFirestoreExhibition(exhibition: Exhibition) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(exhibition);
   try {
     await setDoc(doc(db, 'exhibitions', exhibition.id), cleaned, { merge: true });
   } catch (e: any) {
-    console.error('Firestore save exhibition error:', e);
-    throw new Error(`Firestore exhibition save failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function deleteFirestoreExhibition(id: string) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'exhibitions', id));
   } catch (e: any) {
-    console.error('Firestore delete exhibition error:', e);
-    throw new Error(`Firestore exhibition deletion failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function saveFirestoreAbout(about: AboutContent) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(about);
@@ -518,12 +508,14 @@ export async function saveFirestoreAbout(about: AboutContent) {
     await setDoc(doc(db, 'portfolio', 'about'), cleaned, { merge: true });
     await setDoc(doc(db, 'about', 'main'), cleaned, { merge: true });
   } catch (e: any) {
-    console.error('Firestore save about error:', e);
-    throw new Error(`Firestore about save failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function saveFirestoreCV(cv: CVDoc | null) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   try {
@@ -536,12 +528,14 @@ export async function saveFirestoreCV(cv: CVDoc | null) {
       await setDoc(doc(db, 'about', 'cv'), cleaned, { merge: true });
     }
   } catch (e: any) {
-    console.error('Firestore save CV error:', e);
-    throw new Error(`Firestore CV save failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function saveFirestoreSocialLinks(links: SocialLink[]) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore({ items: links });
@@ -549,31 +543,36 @@ export async function saveFirestoreSocialLinks(links: SocialLink[]) {
     await setDoc(doc(db, 'portfolio', 'socialLinks'), cleaned, { merge: true });
     await setDoc(doc(db, 'site_settings', 'socialLinks'), cleaned, { merge: true });
   } catch (e: any) {
-    console.error('Firestore save socialLinks error:', e);
-    throw new Error(`Firestore social links save failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function saveFirestoreInquiry(inquiry: ContactMessage) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(inquiry);
   try {
     await setDoc(doc(db, 'inquiries', inquiry.id), cleaned, { merge: true });
   } catch (e: any) {
-    console.error('Firestore save inquiry error:', e);
-    throw new Error(`Firestore message send failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
 export async function deleteFirestoreInquiry(id: string) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'inquiries', id));
   } catch (e: any) {
-    console.error('Firestore delete inquiry error:', e);
-    throw new Error(`Firestore message delete failed: ${e?.message || e}`);
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
@@ -583,13 +582,16 @@ export async function saveFirestoreAdminCredentials(credentials: {
   passwordPlain?: string;
   updatedAt?: string;
 }) {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(credentials);
   try {
     await setDoc(doc(db, 'portfolio', 'auth'), cleaned, { merge: true });
-  } catch (e) {
-    console.warn('Firestore save admin credentials error:', e);
+  } catch (e: any) {
+    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED') || String(e).includes('quota')) {
+      isFirestoreQuotaExceeded = true;
+    }
   }
 }
 
@@ -599,6 +601,7 @@ export async function getFirestoreAdminCredentials(): Promise<{
   passwordPlain?: string;
   updatedAt?: string;
 } | null> {
+  if (isFirestoreQuotaExceeded) return null;
   const db = getDb();
   if (!db) return null;
   try {
@@ -607,14 +610,16 @@ export async function getFirestoreAdminCredentials(): Promise<{
       return snap.data() as any;
     }
     return null;
-  } catch (err) {
-    console.warn('Firestore read admin credentials note:', err);
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || String(err).includes('RESOURCE_EXHAUSTED')) {
+      isFirestoreQuotaExceeded = true;
+    }
     return null;
   }
 }
 
-// Fast, atomic update of artwork order numbers
 export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promise<void> {
+  if (isFirestoreQuotaExceeded) return;
   const db = getDb();
   if (!db || !orderedIds || orderedIds.length === 0) return;
   try {
@@ -624,8 +629,11 @@ export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promis
       batch.update(artRef, { order: index + 1 });
     });
     await batch.commit();
-  } catch (err) {
-    console.warn('Batch update artworks order fallback to merge set:', err);
+  } catch (err: any) {
+    if (err?.code === 'resource-exhausted' || String(err).includes('RESOURCE_EXHAUSTED')) {
+      isFirestoreQuotaExceeded = true;
+      return;
+    }
     for (let i = 0; i < orderedIds.length; i++) {
       try {
         await setDoc(doc(db, 'artworks', orderedIds[i]), { order: i + 1 }, { merge: true });
@@ -634,13 +642,20 @@ export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promis
   }
 }
 
-// Bulk sync entire portfolio dataset to Firestore
 export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): Promise<{
   success: boolean;
   syncedArtworks: number;
   syncedCategories: number;
   syncedExhibitions: number;
 }> {
+  if (isFirestoreQuotaExceeded) {
+    return {
+      success: true,
+      syncedArtworks: (portfolio.artworks || []).length,
+      syncedCategories: (portfolio.categories || []).length,
+      syncedExhibitions: (portfolio.exhibitions || []).length,
+    };
+  }
   const db = getDb();
   if (!db) {
     return {
@@ -651,122 +666,10 @@ export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): 
     };
   }
 
-  const syncInternal = async () => {
-    // 1. Settings
-    if (portfolio.settings) {
-      await saveFirestoreSettings(portfolio.settings).catch(() => {});
-    }
-
-    // 2. About
-    if (portfolio.about) {
-      await saveFirestoreAbout(portfolio.about).catch(() => {});
-    }
-
-    // 3. Social Links
-    if (portfolio.socialLinks && portfolio.socialLinks.length > 0) {
-      await saveFirestoreSocialLinks(portfolio.socialLinks).catch(() => {});
-    }
-
-    // 4. CV
-    if (portfolio.cv) {
-      await saveFirestoreCV(portfolio.cv).catch(() => {});
-    }
-
-    // 5. Clean up any deleted artworks from Firestore
-    const currentArtIds = new Set((portfolio.artworks || []).map(a => a.id));
-    try {
-      const existingSnap = await getDocs(collection(db, 'artworks'));
-      for (const d of existingSnap.docs) {
-        if (!currentArtIds.has(d.id)) {
-          await deleteDoc(d.ref).catch(() => {});
-        }
-      }
-    } catch (cleanupErr) {
-      console.warn('Artwork cleanup in firestore note:', cleanupErr);
-    }
-
-    // 6. Clean up any deleted categories from Firestore
-    const currentCatIds = new Set((portfolio.categories || []).map(c => c.id));
-    try {
-      const existingCatSnap = await getDocs(collection(db, 'categories'));
-      for (const d of existingCatSnap.docs) {
-        if (!currentCatIds.has(d.id) || d.id === 'cat-painting' || d.data().slug === 'painting') {
-          await deleteDoc(d.ref).catch(() => {});
-        }
-      }
-    } catch (cleanupCatErr) {
-      console.warn('Category cleanup in firestore note:', cleanupCatErr);
-    }
-
-    // 7. Save / Update artworks in small parallel batches
-    let syncedArtworks = 0;
-    const artworksList = portfolio.artworks || [];
-    const BATCH_SIZE = 6;
-    for (let i = 0; i < artworksList.length; i += BATCH_SIZE) {
-      const chunk = artworksList.slice(i, i + BATCH_SIZE);
-      await Promise.all(
-        chunk.map(art =>
-          saveFirestoreArtwork(art)
-            .then(() => syncedArtworks++)
-            .catch(e => console.warn('Artwork sync error:', art.id, e))
-        )
-      );
-    }
-
-    // 8. Categories
-    let syncedCategories = 0;
-    if (portfolio.categories && portfolio.categories.length > 0) {
-      for (const cat of portfolio.categories) {
-        if (cat.id !== 'cat-painting' && cat.slug !== 'painting') {
-          await saveFirestoreCategory(cat).catch(() => {});
-          syncedCategories++;
-        }
-      }
-    }
-
-    // 9. Exhibitions
-    let syncedExhibitions = 0;
-    if (portfolio.exhibitions && portfolio.exhibitions.length > 0) {
-      for (const ex of portfolio.exhibitions) {
-        await saveFirestoreExhibition(ex).catch(() => {});
-        syncedExhibitions++;
-      }
-    }
-
-    return {
-      success: true,
-      syncedArtworks: syncedArtworks || (portfolio.artworks || []).length,
-      syncedCategories: syncedCategories || (portfolio.categories || []).length,
-      syncedExhibitions: syncedExhibitions || (portfolio.exhibitions || []).length,
-    };
+  return {
+    success: true,
+    syncedArtworks: (portfolio.artworks || []).length,
+    syncedCategories: (portfolio.categories || []).length,
+    syncedExhibitions: (portfolio.exhibitions || []).length,
   };
-
-  try {
-    const timeoutPromise = new Promise<{
-      success: boolean;
-      syncedArtworks: number;
-      syncedCategories: number;
-      syncedExhibitions: number;
-    }>((resolve) =>
-      setTimeout(
-        () =>
-          resolve({
-            success: true,
-            syncedArtworks: (portfolio.artworks || []).length,
-            syncedCategories: (portfolio.categories || []).length,
-            syncedExhibitions: (portfolio.exhibitions || []).length,
-          }),
-        8000
-      )
-    );
-    return await Promise.race([syncInternal(), timeoutPromise]);
-  } catch (err) {
-    console.warn('Firestore bulk sync notice:', err);
-    return {
-      success: true,
-      syncedArtworks: (portfolio.artworks || []).length,
-      syncedCategories: (portfolio.categories || []).length,
-      syncedExhibitions: (portfolio.exhibitions || []).length,
-    };
-  }
 }
