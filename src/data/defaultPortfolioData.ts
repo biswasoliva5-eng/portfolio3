@@ -79,6 +79,138 @@ export const DUMMY_DEFAULT_ARTWORK_IDS = new Set([
 
 export const defaultArtworks: Artwork[] = [
   {
+  "id": "art-1790700300001",
+  "slug": "glass-sculpture-2026",
+  "title": "glass",
+  "year": 2026,
+  "categorySlug": "sculpture",
+  "categoryName": "Sculpture",
+  "medium": "Papier-mâché, newspaper, wire, red pigment",
+  "dimensions": "Large scale sculptural installation",
+  "description": "Large-scale sculptural installation depicting oversized eyeglasses crafted from newspaper papier-mâché with red temple ends, standing upright in the studio space.",
+  "mainImage": "/uploads/glass-sculpture-art-1790700300001.jpg",
+  "images": [
+    {
+      "id": "img-glass-1",
+      "url": "/uploads/glass-sculpture-art-1790700300001.jpg",
+      "alt": "glass (2026)",
+      "order": 1,
+      "isPrimary": true
+    }
+  ],
+  "isFeatured": true,
+  "order": 11,
+  "mediaType": "image",
+  "createdAt": "2026-09-29T16:00:00.000Z",
+  "updatedAt": "2026-09-29T16:00:00.000Z"
+},
+  {
+  "id": "art-1790700300002",
+  "slug": "jaal-sculpture-2026",
+  "title": "জাল",
+  "year": 2026,
+  "categorySlug": "sculpture",
+  "categoryName": "Sculpture",
+  "medium": "Wire mesh, metal armature, organic textured paper",
+  "dimensions": "Freestanding wire installation",
+  "description": "Curved crescent freestanding metal armature interwoven with wire netting and suspended organic texture, exhibited in front of studio wall collages.",
+  "mainImage": "/uploads/jaal-sculpture-art-1790700300002.jpg",
+  "images": [
+    {
+      "id": "img-jaal-1",
+      "url": "/uploads/jaal-sculpture-art-1790700300002.jpg",
+      "alt": "জাল (2026)",
+      "order": 1,
+      "isPrimary": true
+    }
+  ],
+  "isFeatured": true,
+  "order": 12,
+  "mediaType": "image",
+  "createdAt": "2026-09-29T16:00:00.000Z",
+  "updatedAt": "2026-09-29T16:00:00.000Z"
+},
+  {
+  "id": "art-1790700300003",
+  "slug": "beauty-consumersm-2026",
+  "title": "Beauty consumersm",
+  "year": 2026,
+  "categorySlug": "sculpture",
+  "categoryName": "Sculpture",
+  "medium": "Inflatable vinyl, acrylic sheet, drawing, printed media collage",
+  "dimensions": "Multidimensional installation",
+  "description": "Large vibrant glossy red inflated lips sculpture positioned beneath transparent acrylic glass with expressive facial contour drawings and printed text on beauty consumerism.",
+  "mainImage": "/uploads/beauty-consumersm-art-1790700300003.jpg",
+  "images": [
+    {
+      "id": "img-beauty-1",
+      "url": "/uploads/beauty-consumersm-art-1790700300003.jpg",
+      "alt": "Beauty consumersm (2026)",
+      "order": 1,
+      "isPrimary": true
+    },
+    {
+      "id": "img-beauty-2",
+      "url": "/uploads/beauty-consumersm-art-1790700300003.jpg",
+      "alt": "Beauty consumersm - Detail",
+      "order": 2,
+      "isPrimary": false
+    },
+    {
+      "id": "img-beauty-3",
+      "url": "/uploads/beauty-consumersm-art-1790700300003.jpg",
+      "alt": "Beauty consumersm - Installation",
+      "order": 3,
+      "isPrimary": false
+    }
+  ],
+  "isFeatured": true,
+  "order": 13,
+  "mediaType": "image",
+  "createdAt": "2026-09-29T16:00:00.000Z",
+  "updatedAt": "2026-09-29T16:00:00.000Z"
+},
+  {
+  "id": "art-1790700300004",
+  "slug": "shelter-transformation-2026",
+  "title": "Transformation & Identity",
+  "year": 2026,
+  "categorySlug": "sculpture",
+  "categoryName": "Sculpture",
+  "medium": "Wire armature, spectacles, illustrated balloons, miniature doll figure",
+  "dimensions": "Studio installation on wooden pedestal",
+  "description": "Three vertical figurative wire sculptures wearing optical glasses and sunglasses, topped with illustrated transparent balloons and a reaching doll figure.",
+  "mainImage": "/uploads/shelter-transformation-art-1790700300004.jpg",
+  "images": [
+    {
+      "id": "img-trans-1",
+      "url": "/uploads/shelter-transformation-art-1790700300004.jpg",
+      "alt": "Transformation & Identity (2026)",
+      "order": 1,
+      "isPrimary": true
+    },
+    {
+      "id": "img-trans-2",
+      "url": "/uploads/shelter-transformation-art-1790700300004.jpg",
+      "alt": "Transformation & Identity - View 2",
+      "order": 2,
+      "isPrimary": false
+    },
+    {
+      "id": "img-trans-3",
+      "url": "/uploads/shelter-transformation-art-1790700300004.jpg",
+      "alt": "Transformation & Identity - View 3",
+      "order": 3,
+      "isPrimary": false
+    }
+  ],
+  "isFeatured": true,
+  "order": 14,
+  "mediaType": "image",
+  "createdAt": "2026-09-29T16:00:00.000Z",
+  "updatedAt": "2026-09-29T16:00:00.000Z"
+},
+  {
     "videoUrl": "",
     "medium": "Watercolor and pen",
     "videoTitle": "",

@@ -130,20 +130,21 @@ export const AdminView: React.FC = () => {
     }
   };
 
-  // Auto-sync admin's local artworks to server upon mounting admin panel
+  // Auto-sync admin's local artworks to Firestore & server upon mounting admin panel
   useEffect(() => {
-    const syncLocalToServer = async () => {
+    const syncLocalToCloudAndServer = async () => {
       try {
         const local = await getLocalPortfolioDataAsync();
         if (local && local.artworks && local.artworks.length > 0) {
           await api.batchSyncArtworks(local.artworks);
+          await api.syncAllToCloud();
           await refreshData();
         }
       } catch (e) {
         console.warn('Auto admin sync note:', e);
       }
     };
-    syncLocalToServer();
+    syncLocalToCloudAndServer();
   }, []);
 
   // Download complete JSON backup
