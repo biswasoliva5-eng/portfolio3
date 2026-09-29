@@ -1,8 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getFirestore,
-  initializeFirestore,
-  memoryLocalCache,
   doc,
   setDoc,
   getDoc,
@@ -26,43 +24,13 @@ import type {
 
 let dbInstance: ReturnType<typeof getFirestore> | null = null;
 
-const QUOTA_KEY = 'firestore_quota_exhausted_until';
-
-export function isFirestoreQuotaExhausted(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const raw = localStorage.getItem(QUOTA_KEY);
-    if (!raw) return false;
-    const until = parseInt(raw, 10);
-    if (Date.now() < until) return true;
-    localStorage.removeItem(QUOTA_KEY);
-  } catch {}
-  return false;
-}
-
-export function markFirestoreQuotaExhausted(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    // Suppress further writes for 2 hours while quota resets to prevent error spam
-    localStorage.setItem(QUOTA_KEY, String(Date.now() + 2 * 60 * 60 * 1000));
-  } catch {}
-}
-
 function getDb() {
   if (dbInstance) return dbInstance;
   try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    try {
-      dbInstance = initializeFirestore(
-        app,
-        { localCache: memoryLocalCache() },
-        firebaseConfig.firestoreDatabaseId || undefined
-      );
-    } catch {
-      dbInstance = firebaseConfig.firestoreDatabaseId
-        ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-        : getFirestore(app);
-    }
+    dbInstance = firebaseConfig.firestoreDatabaseId
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
     return dbInstance;
   } catch (err) {
     console.warn('Firebase initialization warning:', err);
@@ -71,7 +39,6 @@ function getDb() {
 }
 
 export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData> | null> {
-  if (isFirestoreQuotaExhausted()) return null;
   const db = getDb();
   if (!db) return null;
 
@@ -191,22 +158,22 @@ export function cleanForFirestore<T>(data: T): T {
 }
 
 export async function saveFirestoreSettings(settings: Partial<SiteSettings>) {
-  if (isFirestoreQuotaExhausted()) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(settings);
   try {
     await setDoc(doc(db, 'site_settings', 'settings'), cleaned, { merge: true });
-  } catch (e: any) {
-    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
-      markFirestoreQuotaExhausted();
-      return;
-    }
+  } catch (e) {
+    console.warn('Firestore save site_settings error:', e);
+  }
+  try {
+    await setDoc(doc(db, 'portfolio', 'settings'), cleaned, { merge: true });
+  } catch (e) {
+    console.warn('Firestore save portfolio/settings error:', e);
   }
 }
 
 export async function saveFirestoreArtwork(artwork: Artwork) {
-  if (isFirestoreQuotaExhausted()) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(artwork);
@@ -214,7 +181,7 @@ export async function saveFirestoreArtwork(artwork: Artwork) {
     await setDoc(doc(db, 'artworks', artwork.id), cleaned, { merge: true });
   } catch (e: any) {
     if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
-      markFirestoreQuotaExhausted();
+      console.warn('Firestore daily write quota reached. Artwork is safely saved in local and server storage.');
       return;
     }
     console.error(`Firestore save artwork ${artwork.id} error:`, e);
@@ -222,14 +189,12 @@ export async function saveFirestoreArtwork(artwork: Artwork) {
 }
 
 export async function deleteFirestoreArtwork(id: string) {
-  if (isFirestoreQuotaExhausted()) return;
   const db = getDb();
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'artworks', id));
   } catch (e: any) {
     if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
-      markFirestoreQuotaExhausted();
       return;
     }
     console.error(`Firestore delete artwork ${id} error:`, e);
@@ -237,31 +202,23 @@ export async function deleteFirestoreArtwork(id: string) {
 }
 
 export async function saveFirestoreCategory(category: Category) {
-  if (isFirestoreQuotaExhausted()) return;
   const db = getDb();
   if (!db) return;
   const cleaned = cleanForFirestore(category);
   try {
     await setDoc(doc(db, 'categories', category.id), cleaned, { merge: true });
-  } catch (e: any) {
-    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
-      markFirestoreQuotaExhausted();
-      return;
-    }
+  } catch (e) {
+    console.warn('Firestore save category error:', e);
   }
 }
 
 export async function deleteFirestoreCategory(id: string) {
-  if (isFirestoreQuotaExhausted()) return;
   const db = getDb();
   if (!db) return;
   try {
     await deleteDoc(doc(db, 'categories', id));
-  } catch (e: any) {
-    if (e?.code === 'resource-exhausted' || String(e).includes('RESOURCE_EXHAUSTED')) {
-      markFirestoreQuotaExhausted();
-      return;
-    }
+  } catch (e) {
+    console.warn('Firestore delete category error:', e);
   }
 }
 
@@ -386,7 +343,6 @@ export async function getFirestoreAdminCredentials(): Promise<{
 
 // Fast, atomic update of artwork order numbers without re-transmitting heavy image payloads
 export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promise<void> {
-  if (isFirestoreQuotaExhausted()) return;
   const db = getDb();
   if (!db || !orderedIds || orderedIds.length === 0) return;
   try {
@@ -396,21 +352,12 @@ export async function updateFirestoreArtworksOrder(orderedIds: string[]): Promis
       batch.update(artRef, { order: index + 1 });
     });
     await batch.commit();
-  } catch (err: any) {
-    if (err?.code === 'resource-exhausted' || String(err).includes('RESOURCE_EXHAUSTED')) {
-      markFirestoreQuotaExhausted();
-      return;
-    }
+  } catch (err) {
     console.warn('Batch update artworks order fallback to merge set:', err);
     for (let i = 0; i < orderedIds.length; i++) {
       try {
         await setDoc(doc(db, 'artworks', orderedIds[i]), { order: i + 1 }, { merge: true });
-      } catch (innerErr: any) {
-        if (innerErr?.code === 'resource-exhausted' || String(innerErr).includes('RESOURCE_EXHAUSTED')) {
-          markFirestoreQuotaExhausted();
-          return;
-        }
-      }
+      } catch {}
     }
   }
 }
@@ -422,14 +369,6 @@ export async function syncEntirePortfolioToFirestore(portfolio: PortfolioData): 
   syncedCategories: number;
   syncedExhibitions: number;
 }> {
-  if (isFirestoreQuotaExhausted()) {
-    return {
-      success: true,
-      syncedArtworks: portfolio.artworks?.length || 0,
-      syncedCategories: portfolio.categories?.length || 0,
-      syncedExhibitions: portfolio.exhibitions?.length || 0,
-    };
-  }
   const db = getDb();
   if (!db) throw new Error('Firebase Firestore is not initialized');
 

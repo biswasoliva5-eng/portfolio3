@@ -12,12 +12,6 @@ const DUMMY_IDS = new Set([
 ]);
 
 export async function syncFirestoreToLocalDb(dbInstance: any): Promise<boolean> {
-  const currentLocal = dbInstance.getArtworks();
-  if (currentLocal && currentLocal.length > 0) {
-    // Local database is already populated with curated artworks; skip Firestore reads to preserve daily quota
-    return true;
-  }
-
   const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (!fs.existsSync(cfgPath)) return false;
 
@@ -38,8 +32,7 @@ export async function syncFirestoreToLocalDb(dbInstance: any): Promise<boolean> 
         }
       });
 
-      const currentLocal = dbInstance.getArtworks();
-      if (currentLocal.length === 0 && artworks.length > 0) {
+      if (artworks.length > 0) {
         artworks.sort((a, b) => {
           const orderA = typeof a.order === 'number' ? a.order : 999999;
           const orderB = typeof b.order === 'number' ? b.order : 999999;
