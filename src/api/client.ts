@@ -575,49 +575,40 @@ export const api = {
 
   // Artwork Management
   addArtwork: async (artwork: Partial<Artwork>): Promise<Artwork> => {
-    let created: Artwork | null = null;
-    try {
-      if (!isStaticHost()) {
-        created = await request<Artwork>('/api/admin/artworks', {
-          method: 'POST',
-          body: JSON.stringify(artwork),
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server artwork post note:', serverErr);
-    }
+    const created: Artwork = {
+      id: artwork.id || `art-${Date.now()}`,
+      slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      title: artwork.title || 'Untitled Work',
+      year: artwork.year || new Date().getFullYear(),
+      categorySlug: artwork.categorySlug || 'sculpture',
+      categoryName: artwork.categoryName || 'Sculpture',
+      medium: artwork.medium || '',
+      dimensions: artwork.dimensions || '',
+      description: artwork.description || '',
+      mainImage: artwork.mainImage || '',
+      images: artwork.images || [],
+      isFeatured: artwork.isFeatured || false,
+      notes: artwork.notes || '',
+      videoUrl: artwork.videoUrl || '',
+      videoTitle: artwork.videoTitle || '',
+      mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
+      order: artwork.order || 9999,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...artwork,
+    };
 
-    if (!created) {
-      created = {
-        id: artwork.id || `art-${Date.now()}`,
-        slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        title: artwork.title || 'Untitled Work',
-        year: artwork.year || new Date().getFullYear(),
-        categorySlug: artwork.categorySlug || 'sculpture',
-        categoryName: artwork.categoryName || 'Sculpture',
-        medium: artwork.medium || '',
-        dimensions: artwork.dimensions || '',
-        description: artwork.description || '',
-        mainImage: artwork.mainImage || '',
-        images: artwork.images || [],
-        isFeatured: artwork.isFeatured || false,
-        notes: artwork.notes || '',
-        videoUrl: artwork.videoUrl || '',
-        videoTitle: artwork.videoTitle || '',
-        mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
-        order: artwork.order || 9999,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // Direct commit to Cloud Firestore artworks collection
-    await saveFirestoreArtwork(created);
-
-    // Update local cache
     const local = await getLocalPortfolioDataAsync();
-    local.artworks = [created, ...local.artworks.filter(a => a.id !== created!.id)];
+    local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
     await saveLocalPortfolioDataAsync(local);
+
+    // Non-blocking background server sync attempt
+    if (!isStaticHost()) {
+      request('/api/admin/artworks', {
+        method: 'POST',
+        body: JSON.stringify(created),
+      }).catch(() => {});
+    }
 
     return created;
   },
@@ -627,20 +618,10 @@ export const api = {
   },
 
   updateArtwork: async (id: string, updates: Partial<Artwork>): Promise<Artwork> => {
-    let updated: Artwork | null = null;
-    try {
-      if (!isStaticHost()) {
-        updated = await request<Artwork>(`/api/admin/artworks/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify(updates),
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server update note:', serverErr);
-    }
-
     const local = await getLocalPortfolioDataAsync();
     const idx = local.artworks.findIndex(a => a.id === id);
+    let updated: Artwork;
+
     if (idx !== -1) {
       updated = {
         ...local.artworks[idx],
@@ -648,36 +629,55 @@ export const api = {
         updatedAt: new Date().toISOString(),
       };
       local.artworks[idx] = updated;
-    } else if (updated) {
+    } else {
+      updated = {
+        id,
+        slug: (updates.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        title: updates.title || 'Untitled Work',
+        year: updates.year || new Date().getFullYear(),
+        categorySlug: updates.categorySlug || 'sculpture',
+        categoryName: updates.categoryName || 'Sculpture',
+        medium: updates.medium || '',
+        dimensions: updates.dimensions || '',
+        description: updates.description || '',
+        mainImage: updates.mainImage || '',
+        images: updates.images || [],
+        isFeatured: updates.isFeatured || false,
+        notes: updates.notes || '',
+        videoUrl: updates.videoUrl || '',
+        videoTitle: updates.videoTitle || '',
+        mediaType: updates.mediaType || (updates.videoUrl ? 'video' : 'image'),
+        order: updates.order || 9999,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...updates,
+      };
       local.artworks.unshift(updated);
     }
 
-    if (updated) {
-      await saveFirestoreArtwork(updated);
-      await saveLocalPortfolioDataAsync(local);
-      return updated;
+    await saveLocalPortfolioDataAsync(local);
+
+    if (!isStaticHost()) {
+      request(`/api/admin/artworks/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      }).catch(() => {});
     }
-    throw new Error('Artwork not found');
+
+    return updated;
   },
 
   deleteArtwork: async (id: string) => {
-    try {
-      if (!isStaticHost()) {
-        await request<{ success: boolean }>(`/api/admin/artworks/${id}`, {
-          method: 'DELETE',
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server delete note:', serverErr);
-    }
-
-    // Direct deletion from Firestore
-    await deleteFirestoreArtwork(id);
-
-    // Update local cache
     const local = await getLocalPortfolioDataAsync();
     local.artworks = local.artworks.filter(a => a.id !== id);
     await saveLocalPortfolioDataAsync(local);
+
+    if (!isStaticHost()) {
+      request(`/api/admin/artworks/${id}`, {
+        method: 'DELETE',
+      }).catch(() => {});
+    }
+
     return { success: true };
   },
 
