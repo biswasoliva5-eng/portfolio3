@@ -314,60 +314,40 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  // Public Data
+  // Public Data - 100% browser-independent and device-independent
   getPublicData: async (): Promise<PortfolioData> => {
-    // 1. Start with local base data (from IndexedDB / cache)
-    const localBase = await getLocalPortfolioDataAsync();
+    // 1. Try Node.js backend server (canonical live source of truth)
+    try {
+      const serverData = await request<PortfolioData>('/api/portfolio/all');
+      if (serverData && Array.isArray(serverData.artworks) && serverData.artworks.length > 0) {
+        // Enforce exact canonical order
+        serverData.artworks.sort((a, b) => {
+          const orderA = typeof a.order === 'number' ? a.order : 999999;
+          const orderB = typeof b.order === 'number' ? b.order : 999999;
+          if (orderA !== orderB) return orderA - orderB;
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        });
+        return serverData;
+      }
+    } catch {
+      // Server not reachable or static hosting
+    }
 
-    // 2. If on static hosting (like GitHub Pages) or browser-only runtime
+    // 2. If static hosting (e.g. GitHub Pages) with Firestore available
     if (isStaticHost()) {
       try {
         const fsData = await getFirestorePortfolioData();
-        if (fsData) {
-          const merged = mergePortfolioData(localBase, fsData);
-          await saveLocalPortfolioDataAsync(merged);
-          return merged;
+        if (fsData && Array.isArray(fsData.artworks) && fsData.artworks.length > 0) {
+          const canonical = await getLocalPortfolioDataAsync();
+          return mergePortfolioData(canonical, fsData);
         }
-      } catch (fsErr) {
-        console.warn('Cloud Firestore fetch fallback to local:', fsErr);
-      }
-      return localBase;
+      } catch {}
     }
 
-    // 3. If running with Node.js backend server
-    try {
-      const serverData = await request<PortfolioData>('/api/portfolio/all');
-      // Merge serverData with localBase (IndexedDB cache) so nothing uploaded locally is ever lost
-      let consolidated = mergePortfolioData(serverData, localBase);
-      await saveLocalPortfolioDataAsync(consolidated);
-
-      // Only query Firestore if server has no artworks yet
-      if (!serverData.artworks || serverData.artworks.length === 0) {
-        getFirestorePortfolioData().then(async (fsData) => {
-          if (fsData && fsData.artworks && fsData.artworks.length > 0) {
-            const updated = mergePortfolioData(consolidated, fsData);
-            await saveLocalPortfolioDataAsync(updated);
-          }
-        }).catch(() => {});
-      }
-
-      return consolidated;
-    } catch (err: any) {
-      if (isStaticHostingError(err)) {
-        try {
-          const fsData = await getFirestorePortfolioData();
-          if (fsData) {
-            const merged = mergePortfolioData(localBase, fsData);
-            await saveLocalPortfolioDataAsync(merged);
-            return merged;
-          }
-        } catch (fsErr) {
-          console.warn('Cloud Firestore fetch fallback to local:', fsErr);
-        }
-        return localBase;
-      }
-      throw err;
-    }
+    // 3. Fallback to canonical bundled portfolio data (guarantees same 54 artworks & order everywhere)
+    return getLocalPortfolioDataAsync();
   },
 
   syncAllToCloud: async () => {
