@@ -12,13 +12,26 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ categorySlug }) => {
   const { data, navigate, formatUrl } = usePortfolio();
 
   const category = useMemo(() => {
-    return data?.categories.find(c => c.slug === categorySlug);
+    const target = (categorySlug || '').toLowerCase();
+    return data?.categories.find(c => (c.slug || '').toLowerCase() === target || (c.name || '').toLowerCase() === target);
   }, [data?.categories, categorySlug]);
 
   const artworks = useMemo(() => {
+    const target = (categorySlug || '').toLowerCase();
     return (data?.artworks || [])
-      .filter(a => a.categorySlug === categorySlug)
-      .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+      .filter(a => {
+        const catSlug = (a.categorySlug || '').toLowerCase();
+        const catName = (a.categoryName || '').toLowerCase();
+        return catSlug === target || catName === target || (target === 'sculpture' && (catSlug.includes('sculpture') || catName.includes('sculpture')));
+      })
+      .sort((a, b) => {
+        const orderA = typeof a.order === 'number' ? a.order : 999999;
+        const orderB = typeof b.order === 'number' ? b.order : 999999;
+        if (orderA !== orderB) return orderA - orderB;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
   }, [data?.artworks, categorySlug]);
 
   return (

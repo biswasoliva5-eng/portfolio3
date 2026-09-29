@@ -626,8 +626,10 @@ export const api = {
         await saveLocalPortfolioDataAsync(local);
 
         // Sync to Cloud Firestore database and update master document for real-time broadcast
-        saveFirestoreArtwork(newArt).catch(e => console.warn('Firestore artwork sync note:', e));
-        updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
+        await Promise.allSettled([
+          saveFirestoreArtwork(newArt),
+          updateFirestoreMasterDocument({ artworks: local.artworks }),
+        ]);
 
         return newArt;
       }
@@ -670,8 +672,10 @@ export const api = {
           await saveLocalPortfolioDataAsync(local);
 
           // Sync to Cloud Firestore database and update master document
-          saveFirestoreArtwork(local.artworks[idx]).catch(e => console.warn('Firestore artwork sync note:', e));
-          updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
+          await Promise.allSettled([
+            saveFirestoreArtwork(local.artworks[idx]),
+            updateFirestoreMasterDocument({ artworks: local.artworks }),
+          ]);
 
           return local.artworks[idx];
         }
@@ -697,8 +701,10 @@ export const api = {
         const local = await getLocalPortfolioDataAsync();
         local.artworks = local.artworks.filter(a => a.id !== id);
         await saveLocalPortfolioDataAsync(local);
-        deleteFirestoreArtwork(id).catch(() => {});
-        updateFirestoreMasterDocument({ artworks: local.artworks }).catch(() => {});
+        await Promise.allSettled([
+          deleteFirestoreArtwork(id),
+          updateFirestoreMasterDocument({ artworks: local.artworks }),
+        ]);
         return { success: true };
       }
       throw err;

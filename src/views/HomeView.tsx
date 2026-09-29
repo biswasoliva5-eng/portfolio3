@@ -20,7 +20,12 @@ export const HomeView: React.FC = () => {
     }
 
     if (selectedCategory) {
-      list = list.filter(a => a.categorySlug === selectedCategory);
+      const target = selectedCategory.toLowerCase();
+      list = list.filter(a => {
+        const catSlug = (a.categorySlug || '').toLowerCase();
+        const catName = (a.categoryName || '').toLowerCase();
+        return catSlug === target || catName === target || (target === 'sculpture' && (catSlug.includes('sculpture') || catName.includes('sculpture')));
+      });
     }
 
     // Always sort strictly by custom order rank, then newest first
