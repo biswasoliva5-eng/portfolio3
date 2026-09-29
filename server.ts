@@ -471,6 +471,19 @@ async function startServer() {
     }
   });
 
+  app.post('/api/admin/artworks/batch-sync', requireAdminAuth, (req, res) => {
+    try {
+      const { artworks } = req.body;
+      if (!Array.isArray(artworks)) {
+        return res.status(400).json({ error: 'artworks must be an array' });
+      }
+      const synced = db.batchSyncArtworks(artworks);
+      res.json({ success: true, count: synced.length, artworks: synced });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to batch sync artworks.' });
+    }
+  });
+
   // Categories CRUD
   app.post('/api/admin/categories', requireAdminAuth, (req, res) => {
     try {

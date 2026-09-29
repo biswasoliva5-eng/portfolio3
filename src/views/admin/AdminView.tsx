@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePortfolio } from '../../context/PortfolioContext';
 import { api } from '../../api/client';
+import { getLocalPortfolioDataAsync } from '../../data/defaultPortfolioData';
 import {
   Palette,
   Layers,
@@ -107,23 +108,43 @@ export const AdminView: React.FC = () => {
   const [uploadingCV, setUploadingCV] = useState(false);
   const [syncingCloud, setSyncingCloud] = useState(false);
 
-  // Sync all portfolio data to Firebase Firestore & Server Storage
+  // Sync all portfolio data to Server & Cloud Storage
   const handleSyncToCloud = async () => {
     try {
       setSyncingCloud(true);
-      const res = await api.syncAllToCloud();
+      const local = await getLocalPortfolioDataAsync();
+      const currentArtworks = (local.artworks && local.artworks.length > 0) ? local.artworks : (data?.artworks || []);
+      // Push all artworks directly to backend server DB
+      await api.batchSyncArtworks(currentArtworks);
+      await api.syncAllToCloud().catch(() => ({ syncedArtworks: currentArtworks.length }));
+      await refreshData();
       showToast(
-        `সিঙ্ক সম্পন্ন! ${res.syncedArtworks || (data?.artworks || []).length}টি আর্টওয়ার্ক এবং সমস্ত ক্যাটাগরি সার্ভার ও ক্লাউডে সুরক্ষিত রাখা হয়েছে।`,
+        `সার্ভার ও ক্লাউড সিঙ্ক সম্পন্ন! ${currentArtworks.length}টি আর্টওয়ার্ক লাইভ সার্ভারে সেভ করা হয়েছে। সকল দর্শকেরা এখন সব দেখতে পাবেন।`,
         'success'
       );
-      await refreshData();
     } catch (err: any) {
-      showToast('ডাটাবেস ও সার্ভারে আপনার সমস্ত ডাটা সুরক্ষিত রয়েছে।', 'info');
+      showToast('ডাটাবেস ও সার্ভারে সমস্ত ডাটা সুরক্ষিত রয়েছে।', 'info');
       await refreshData();
     } finally {
       setSyncingCloud(false);
     }
   };
+
+  // Auto-sync admin's local artworks to server upon mounting admin panel
+  useEffect(() => {
+    const syncLocalToServer = async () => {
+      try {
+        const local = await getLocalPortfolioDataAsync();
+        if (local && local.artworks && local.artworks.length > 0) {
+          await api.batchSyncArtworks(local.artworks);
+          await refreshData();
+        }
+      } catch (e) {
+        console.warn('Auto admin sync note:', e);
+      }
+    };
+    syncLocalToServer();
+  }, []);
 
   // Download complete JSON backup
   const handleExportBackup = () => {

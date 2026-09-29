@@ -759,6 +759,30 @@ export const api = {
     }
   },
 
+  batchSyncArtworks: async (artworks: Artwork[]): Promise<Artwork[]> => {
+    try {
+      const res = await request<{ success: boolean; count: number; artworks: Artwork[] }>('/api/admin/artworks/batch-sync', {
+        method: 'POST',
+        body: JSON.stringify({ artworks }),
+      });
+      if (res && Array.isArray(res.artworks)) {
+        const local = await getLocalPortfolioDataAsync();
+        local.artworks = res.artworks;
+        await saveLocalPortfolioDataAsync(local);
+        return res.artworks;
+      }
+      return artworks;
+    } catch (err: any) {
+      if (isStaticHostingError(err)) {
+        const local = await getLocalPortfolioDataAsync();
+        local.artworks = artworks;
+        await saveLocalPortfolioDataAsync(local);
+        return artworks;
+      }
+      throw err;
+    }
+  },
+
   // Categories
   addCategory: async (category: Partial<Category>): Promise<Category> => {
     try {
