@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   PortfolioData,
   SiteSettings,
@@ -11,7 +11,7 @@ import {
 } from '../types';
 import { api, getStoredToken, getStoredUsername, clearStoredToken, mergePortfolioData } from '../api/client';
 import { subscribeToFirestorePortfolio } from '../lib/firestoreService';
-import { saveLocalPortfolioDataAsync } from '../data/defaultPortfolioData';
+import { getLocalPortfolioDataAsync, saveLocalPortfolioDataAsync } from '../data/defaultPortfolioData';
 
 interface Toast {
   id: string;
@@ -25,7 +25,7 @@ export const getAppBasePath = (): string => {
   return base === '/' ? '' : base.replace(/\/+$/, '');
 };
 
-// Converts full window.location.pathname (e.g. '/portfolio3/about') into app route (e.g. '/about')
+// Converts full window.location.pathname into app route
 export const normalizeAppPath = (pathname: string): string => {
   const basePath = getAppBasePath();
   let path = (pathname || '/').split('?')[0].split('#')[0];
@@ -39,7 +39,7 @@ export const normalizeAppPath = (pathname: string): string => {
   return path;
 };
 
-// Converts app route (e.g. '/about') into full browser path (e.g. '/portfolio3/about')
+// Converts app route into full browser path
 export const formatAppUrl = (route: string): string => {
   const basePath = getAppBasePath();
   const cleanRoute = route.startsWith('/') ? route : `/${route}`;
@@ -95,15 +95,16 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const [hasEntered, setHasEntered] = useState<boolean>(false);
-
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const initialLoadDone = useRef(false);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    }, 4500);
   }, []);
 
   const removeToast = useCallback((id: string) => {
@@ -147,7 +148,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       setError(null);
       const res = await api.getPublicData();
-      // If admin token is present, try loading inquiries/messages as well
       const token = getStoredToken();
       if (token) {
         try {
@@ -155,7 +155,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           res.inquiries = msgs;
           res.messages = msgs;
         } catch {
-          // ignore if unauthorized
+          // ignore
         }
       }
       setData(res);
@@ -166,6 +166,53 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setLoading(false);
     }
   }, []);
+
+  // Realtime Firestore onSnapshot Subscription
+  // Live listener updates public view instantly without redeploy or reload!
+  useEffect(() => {
+    let isMounted = true;
+
+    // First load fallback to local/cached data while Firestore connects
+    getLocalPortfolioDataAsync().then((local) => {
+      if (isMounted && !initialLoadDone.current) {
+        setData(local);
+      }
+    });
+
+    const unsubscribeFirestore = subscribeToFirestorePortfolio(
+      async (liveData) => {
+        if (!isMounted) return;
+        try {
+          const base = (await getLocalPortfolioDataAsync()) || data;
+          if (base) {
+            const merged = mergePortfolioData(base, liveData);
+            setData(merged);
+            await saveLocalPortfolioDataAsync(merged).catch(() => {});
+          }
+          setLoading(false);
+          initialLoadDone.current = true;
+        } catch (mergeErr) {
+          console.warn('Realtime merge notice:', mergeErr);
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.warn('Realtime Firestore connection notice:', err);
+        // If realtime fails, fallback to standard fetch
+        refreshData();
+      }
+    );
+
+    // Initial fetch to ensure full sync
+    refreshData().then(() => {
+      initialLoadDone.current = true;
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeFirestore();
+    };
+  }, [refreshData]);
 
   // Check auth session
   const verifyAuth = useCallback(async () => {
@@ -243,29 +290,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [navigate]);
 
   useEffect(() => {
-    refreshData();
     verifyAuth();
-
-    // Real-time Firestore stream listener for instantaneous updates across all browsers
-    const unsubscribe = subscribeToFirestorePortfolio(
-      (liveFsData) => {
-        setData(prev => {
-          if (!prev) return null;
-          const merged = mergePortfolioData(prev, liveFsData);
-          saveLocalPortfolioDataAsync(merged).catch(() => {});
-          return merged;
-        });
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('Realtime sync status:', err?.message || err);
-      }
-    );
-
-    return () => {
-      unsubscribe();
-    };
-  }, [refreshData, verifyAuth]);
+  }, [verifyAuth]);
 
   return (
     <PortfolioContext.Provider
