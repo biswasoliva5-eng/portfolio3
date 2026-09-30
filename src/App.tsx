@@ -50,44 +50,17 @@ const AppContent: React.FC = () => {
     }
   }, [currentPath, data]);
 
-  if (loading && !data) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-white flex flex-col md:flex-row">
-        {/* Skeleton Sidebar */}
-        <div className="hidden md:block w-48 lg:w-56 shrink-0 pt-12 pb-10 pl-8 lg:pl-12 pr-4 space-y-8">
-          <div className="space-y-2">
-            <div className="h-5 w-32 bg-neutral-200 animate-pulse rounded-xs" />
-            <div className="h-3 w-20 bg-neutral-100 animate-pulse rounded-xs" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center space-y-2">
+          <div className="text-lg font-normal tracking-tight text-neutral-900">
+            Oliva Biswas
           </div>
-          <div className="space-y-3 pt-6">
-            <div className="h-3 w-24 bg-neutral-200 animate-pulse rounded-xs" />
-            <div className="h-3 w-28 bg-neutral-100 animate-pulse rounded-xs" />
-            <div className="h-3 w-20 bg-neutral-100 animate-pulse rounded-xs" />
-            <div className="h-3 w-16 bg-neutral-100 animate-pulse rounded-xs" />
+          <div className="text-xs text-neutral-400 font-sans tracking-widest uppercase">
+            Loading...
           </div>
         </div>
-
-        {/* Skeleton Gallery Grid */}
-        <main className="flex-1 pt-8 md:pt-12 pb-24 px-6 md:px-10 lg:px-14">
-          <div className="flex items-center justify-between mb-8 pb-4 border-b border-neutral-100">
-            <div className="h-6 w-36 bg-neutral-200 animate-pulse rounded-xs" />
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-ping" />
-              <span className="text-[11px] text-neutral-400 font-mono tracking-widest uppercase">
-                Loading Studio Works...
-              </span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <div key={n} className="flex flex-col space-y-3">
-                <div className="aspect-4/5 w-full bg-neutral-100 animate-pulse rounded-xs" />
-                <div className="h-4 w-3/4 bg-neutral-200 animate-pulse rounded-xs" />
-                <div className="h-3 w-1/2 bg-neutral-100 animate-pulse rounded-xs" />
-              </div>
-            ))}
-          </div>
-        </main>
       </div>
     );
   }
