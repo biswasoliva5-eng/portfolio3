@@ -246,7 +246,7 @@ export async function smartMediaUpload(
   // 3. Try ImgBB if configured (images only)
   if (!isVideo && activeConfig.imgbbApiKey?.trim()) {
     try {
-      const result = await uploadToImgBB(file, activeConfig, activeConfig.imgbbApiKey);
+      const result = await uploadToImgBB(file, activeConfig.imgbbApiKey);
       return {
         url: result.url,
         filename: file.name,

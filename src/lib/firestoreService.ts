@@ -310,6 +310,22 @@ export function subscribeToFirestorePortfolio(
   };
 }
 
+export async function debugGetDirectFirestoreArtworks(): Promise<Artwork[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    const snap = await getDocs(collection(db, 'artworks'));
+    const list: Artwork[] = [];
+    snap.forEach((d) => {
+      list.push(d.data() as Artwork);
+    });
+    return list;
+  } catch (err) {
+    console.warn('Debug fetch error:', err);
+    return [];
+  }
+}
+
 export async function getFirestorePortfolioData(): Promise<Partial<PortfolioData> | null> {
   const db = getDb();
   if (!db) return null;

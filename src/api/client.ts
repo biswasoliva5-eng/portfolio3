@@ -40,6 +40,7 @@ import {
   getFirestoreAdminCredentials,
   syncEntirePortfolioToFirestore,
   updateFirestoreArtworksOrder,
+  debugGetDirectFirestoreArtworks,
 } from '../lib/firestoreService';
 
 /**
@@ -329,6 +330,14 @@ export const api = {
     }
 
     return localBase;
+  },
+
+  getRawFirestoreArtworks: async (): Promise<Artwork[]> => {
+    try {
+      return await debugGetDirectFirestoreArtworks();
+    } catch {
+      return [];
+    }
   },
 
   syncAllToCloud: async () => {

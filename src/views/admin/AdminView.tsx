@@ -108,6 +108,34 @@ export const AdminView: React.FC = () => {
   const [savingAbout, setSavingAbout] = useState(false);
   const [uploadingCV, setUploadingCV] = useState(false);
   const [syncingCloud, setSyncingCloud] = useState(false);
+  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+  const [firestoreArtworks, setFirestoreArtworks] = useState<Artwork[]>([]);
+  const [loadingRecovery, setLoadingRecovery] = useState(false);
+
+  const handleOpenRecoveryModal = async () => {
+    setIsRecoveryModalOpen(true);
+    setLoadingRecovery(true);
+    try {
+      const artworks = await api.getRawFirestoreArtworks();
+      setFirestoreArtworks(artworks);
+    } catch (e: any) {
+      showToast('ফায়ারবেস থেকে ডেটা লোড করতে ব্যর্থ: ' + e.message, 'error');
+    } finally {
+      setLoadingRecovery(false);
+    }
+  };
+
+  const handleRestoreArtworkFromCloud = async (art: Artwork) => {
+    try {
+      await api.addArtwork(art);
+      await refreshData();
+      showToast(`আর্টওয়ার্ক "${art.title}" সফলভাবে রিষ্টোর করা হয়েছে!`, 'success');
+      const artworks = await api.getRawFirestoreArtworks();
+      setFirestoreArtworks(artworks);
+    } catch (e: any) {
+      showToast('রিষ্টোর করতে ব্যর্থ: ' + e.message, 'error');
+    }
+  };
 
   // Sync all portfolio data to Server & Cloud Storage
   const handleSyncToCloud = async () => {
@@ -733,6 +761,16 @@ export const AdminView: React.FC = () => {
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${syncingCloud ? 'animate-spin' : ''}`} />
                     <span>{syncingCloud ? 'সিঙ্ক হচ্ছে...' : 'ক্লাউড সিঙ্ক (Cloud Sync)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenRecoveryModal}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs transition-colors cursor-pointer shadow-2xs font-medium"
+                    title="ফায়ারবেসে সংরক্ষিত সমস্ত ছবি ও আর্টওয়ার্ক চেক করে রিষ্টোর করুন"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>ফায়ারবেস রিকভারি চেক</span>
                   </button>
 
                   <button
@@ -2071,6 +2109,95 @@ export const AdminView: React.FC = () => {
         }}
         showToast={showToast}
       />
+
+      {/* Firestore Recovery Modal */}
+      {isRecoveryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 space-y-4 shadow-xl text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <div>
+                <h3 className="font-semibold text-sm text-neutral-950">
+                  ফায়ারবেস ক্লাউড ডেটাবেস রিকভারি ও চেক (Firestore Recovery)
+                </h3>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  এখানে ফায়ারবেস ডেটাবেসে থাকা সমস্ত আর্টওয়ার্কের তালিকা রয়েছে ("জাল", "রিলেশন বিটুইন হিউম্যান অ্যান্ড গ্লাস" বা অন্যান্য ছবি খুঁজুন):
+                </p>
+              </div>
+              <button
+                onClick={() => setIsRecoveryModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-950 text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingRecovery ? (
+              <div className="py-12 text-center space-y-2">
+                <div className="w-6 h-6 border-2 border-neutral-900 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-neutral-500">ফায়ারবেস থেকে ডেটা চেক করা হচ্ছে...</p>
+              </div>
+            ) : firestoreArtworks.length === 0 ? (
+              <div className="py-12 text-center text-neutral-400">
+                ফায়ারবেসে কোনো আর্টওয়ার্ক পাওয়া যায়নি বা ডেটা সিঙ্ক করা হয়নি।
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                <div className="text-[11px] font-mono bg-neutral-100 p-2 rounded text-neutral-700">
+                  মোট ফায়ারবেস আইটেম: {firestoreArtworks.length}টি
+                </div>
+                {firestoreArtworks.map((art) => {
+                  const existsInLocal = data?.artworks.some(a => a.id === art.id);
+                  return (
+                    <div
+                      key={art.id}
+                      className="border border-neutral-200 rounded p-3 flex items-center justify-between gap-3 bg-white"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 bg-neutral-100 rounded overflow-hidden shrink-0">
+                          <img
+                            src={art.mainImage}
+                            alt={art.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-neutral-900 truncate">{art.title}</h4>
+                          <p className="text-[11px] text-neutral-500">
+                            {art.year} • {art.categoryName || art.categorySlug} {art.medium ? `• ${art.medium}` : ''}
+                          </p>
+                          <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded mt-1 font-mono ${existsInLocal ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                            {existsInLocal ? 'বর্তমানে লাইভ সাইটে আছে' : 'লাইভ সাইটে নেই (রিকভার করতে পারেন)'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!existsInLocal && (
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreArtworkFromCloud(art)}
+                          className="px-3 py-1.5 bg-neutral-900 text-white hover:bg-neutral-800 rounded text-xs font-medium shrink-0 cursor-pointer"
+                        >
+                          রিষ্টোর করুন
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setIsRecoveryModalOpen(false)}
+                className="px-4 py-2 bg-neutral-950 text-white rounded text-xs hover:bg-neutral-800 cursor-pointer"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
