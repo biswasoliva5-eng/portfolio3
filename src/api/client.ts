@@ -92,7 +92,7 @@ export function mergePortfolioData(
   }
   const categories = Array.from(catMap.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
-  // 6. Artworks: PREVENT DATA OVERWRITING & EXCLUDE DUMMY WORKS
+  // 6. Artworks: Firestore cloud artworks is the authoritative source of truth.
   const DUMMY_IDS = new Set([
     'art-p1', 'art-p2', 'art-p3',
     'art-d1', 'art-d2',
@@ -103,34 +103,21 @@ export function mergePortfolioData(
 
   const artMap = new Map<string, Artwork>();
 
-  (base.artworks || []).forEach(baseArt => {
-    if (!DUMMY_IDS.has(baseArt.id)) {
-      artMap.set(baseArt.id, { ...baseArt });
+  const hasCloudArtworks = cloud && Array.isArray(cloud.artworks);
+  // If cloud.artworks is provided (even if empty after deletion), cloud is the source of truth.
+  const sourceArtworks = hasCloudArtworks ? cloud.artworks! : (base.artworks || []);
+
+  sourceArtworks.forEach(art => {
+    if (!DUMMY_IDS.has(art.id)) {
+      artMap.set(art.id, { ...art });
     }
   });
-
-  if (cloud && Array.isArray(cloud.artworks)) {
-    cloud.artworks.forEach(cloudArt => {
-      if (DUMMY_IDS.has(cloudArt.id)) return;
-      const existing = artMap.get(cloudArt.id);
-      if (existing) {
-        if ((!existing.images || existing.images.length === 0) && cloudArt.images && cloudArt.images.length > 0) {
-          existing.images = cloudArt.images;
-        }
-        if (!existing.mainImage && cloudArt.mainImage) {
-          existing.mainImage = cloudArt.mainImage;
-        }
-      } else {
-        artMap.set(cloudArt.id, { ...cloudArt });
-      }
-    });
-  }
 
   const artworks = Array.from(artMap.values())
     .filter(a => !DUMMY_IDS.has(a.id))
     .sort((a, b) => {
-      const orderA = typeof a.order === 'number' ? a.order : 999999;
-      const orderB = typeof b.order === 'number' ? b.order : 999999;
+      const orderA = typeof a.order === 'number' && !isNaN(a.order) ? a.order : 999999;
+      const orderB = typeof b.order === 'number' && !isNaN(b.order) ? b.order : 999999;
       if (orderA !== orderB) {
         return orderA - orderB;
       }
