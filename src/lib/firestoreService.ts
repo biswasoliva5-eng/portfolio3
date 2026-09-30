@@ -98,19 +98,39 @@ export async function uploadToFirebaseStorage(
   const uploadTask = uploadBytesResumable(fileRef, file);
 
   return new Promise((resolve, reject) => {
+    let isCompleted = false;
+
+    // Timeout safeguard (12 seconds) to prevent infinite loading if network or storage rules stall
+    const timeoutTimer = setTimeout(() => {
+      if (!isCompleted) {
+        isCompleted = true;
+        try {
+          uploadTask.cancel();
+        } catch {}
+        reject(new Error('Firebase Storage upload timed out. Switching to fallback compression upload.'));
+      }
+    }, 12000);
+
     uploadTask.on(
       'state_changed',
       (snapshot) => {
+        if (isCompleted) return;
         if (onProgress && snapshot.totalBytes > 0) {
           const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
           onProgress(progress);
         }
       },
       (error) => {
+        if (isCompleted) return;
+        isCompleted = true;
+        clearTimeout(timeoutTimer);
         console.error('Firebase Storage upload error:', error);
         reject(new Error(`Firebase Storage upload failed: ${error.message}`));
       },
       async () => {
+        if (isCompleted) return;
+        isCompleted = true;
+        clearTimeout(timeoutTimer);
         try {
           const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
           resolve({

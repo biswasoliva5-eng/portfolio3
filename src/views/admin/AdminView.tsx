@@ -67,6 +67,7 @@ export const AdminView: React.FC = () => {
   const [uploadingArtImage, setUploadingArtImage] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
+  const [savingArtwork, setSavingArtwork] = useState(false);
   const [isReorderingMode, setIsReorderingMode] = useState(false);
   const [draggedArtIndex, setDraggedArtIndex] = useState<number | null>(null);
   const [dragOverArtIndex, setDragOverArtIndex] = useState<number | null>(null);
@@ -130,21 +131,20 @@ export const AdminView: React.FC = () => {
     }
   };
 
-  // Auto-sync admin's local artworks to Firestore & server upon mounting admin panel
+  // Auto-sync admin's local artworks to server upon mounting admin panel
   useEffect(() => {
-    const syncLocalToCloudAndServer = async () => {
+    const syncLocalToServer = async () => {
       try {
         const local = await getLocalPortfolioDataAsync();
         if (local && local.artworks && local.artworks.length > 0) {
           await api.batchSyncArtworks(local.artworks);
-          await api.syncAllToCloud();
           await refreshData();
         }
       } catch (e) {
         console.warn('Auto admin sync note:', e);
       }
     };
-    syncLocalToCloudAndServer();
+    syncLocalToServer();
   }, []);
 
   // Download complete JSON backup
@@ -252,24 +252,45 @@ export const AdminView: React.FC = () => {
   // Artwork Save
   const handleSaveArtwork = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingArtwork?.title || !editingArtwork?.mainImage) {
-      showToast('Please provide a title and image.', 'error');
+    if (!editingArtwork?.title) {
+      showToast('অনুগ্রহ করে আর্টওয়ার্কের নাম (Title) দিন।', 'error');
+      return;
+    }
+
+    let mainImg = editingArtwork?.mainImage;
+    let imgs = editingArtwork?.images || [];
+    if (!mainImg && imgs.length > 0) {
+      mainImg = imgs[0].url;
+    }
+
+    if (!mainImg) {
+      showToast('অনুগ্রহ করে অন্তত একটি ছবি আপলোড করুন বা ছবির লিংক দিন।', 'error');
       return;
     }
 
     try {
-      if (editingArtwork.id) {
-        await api.updateArtwork(editingArtwork.id, editingArtwork);
-        showToast('Artwork updated', 'success');
+      setSavingArtwork(true);
+      const payload = {
+        ...editingArtwork,
+        mainImage: mainImg,
+        images: imgs.length > 0 ? imgs : [{ id: `img-${Date.now()}`, url: mainImg, alt: editingArtwork.title, order: 1, isPrimary: true }],
+      };
+
+      if (payload.id) {
+        await api.updateArtwork(payload.id, payload);
+        showToast('আর্টওয়ার্ক সফলভাবে আপডেট হয়েছে!', 'success');
       } else {
-        await api.addArtwork(editingArtwork);
-        showToast('Artwork created', 'success');
+        await api.addArtwork(payload);
+        showToast('নতুন আর্টওয়ার্ক সফলভাবে সেভ হয়েছে!', 'success');
       }
       await refreshData();
       setIsArtworkModalOpen(false);
       setEditingArtwork(null);
     } catch (err: any) {
-      showToast(err.message || 'Failed to save artwork', 'error');
+      console.error('Save artwork error:', err);
+      showToast(err.message || 'আর্টওয়ার্ক সেভ করতে ব্যর্থ। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
+    } finally {
+      setSavingArtwork(false);
     }
   };
 
@@ -1874,9 +1895,10 @@ export const AdminView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-neutral-950 text-white rounded hover:bg-neutral-800"
+                  disabled={savingArtwork}
+                  className="px-4 py-2 bg-neutral-950 text-white rounded hover:bg-neutral-800 disabled:opacity-50 cursor-pointer"
                 >
-                  Save Artwork
+                  {savingArtwork ? 'Saving...' : 'Save Artwork'}
                 </button>
               </div>
             </form>

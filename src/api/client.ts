@@ -318,11 +318,11 @@ export const api = {
     if (!isStaticHost()) {
       try {
         const serverData = await request<PortfolioData>('/api/portfolio/all');
-        if (serverData && Array.isArray(serverData.artworks) && serverData.artworks.length > 0) {
-          await saveLocalPortfolioDataAsync(serverData);
-          return serverData;
+        if (serverData) {
+          const merged = mergePortfolioData(localBase, serverData);
+          await saveLocalPortfolioDataAsync(merged);
+          return merged;
         }
-        return serverData || localBase;
       } catch (err: any) {
         console.warn('Backend server fetch note:', err?.message || err);
       }
@@ -333,6 +333,30 @@ export const api = {
 
   syncAllToCloud: async () => {
     const current = getLocalPortfolioData();
+    if (!isStaticHost()) {
+      try {
+        if (current.artworks && current.artworks.length > 0) {
+          await request('/api/admin/artworks/batch-sync', {
+            method: 'POST',
+            body: JSON.stringify({ artworks: current.artworks }),
+          });
+        }
+        if (current.settings) {
+          await request('/api/admin/settings', {
+            method: 'PUT',
+            body: JSON.stringify(current.settings),
+          });
+        }
+        if (current.about) {
+          await request('/api/admin/about', {
+            method: 'PUT',
+            body: JSON.stringify(current.about),
+          });
+        }
+      } catch (e) {
+        console.warn('Sync to server disk note:', e);
+      }
+    }
     return syncEntirePortfolioToFirestore(current);
   },
 
@@ -575,49 +599,55 @@ export const api = {
 
   // Artwork Management
   addArtwork: async (artwork: Partial<Artwork>): Promise<Artwork> => {
-    let created: Artwork | null = null;
+    const created: Artwork = {
+      id: artwork.id || `art-${Date.now()}`,
+      slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      title: artwork.title || 'Untitled Work',
+      year: artwork.year || new Date().getFullYear(),
+      categorySlug: artwork.categorySlug || 'sculpture',
+      categoryName: artwork.categoryName || 'Sculpture',
+      medium: artwork.medium || '',
+      dimensions: artwork.dimensions || '',
+      description: artwork.description || '',
+      mainImage: artwork.mainImage || '',
+      images: artwork.images || [],
+      isFeatured: artwork.isFeatured || false,
+      notes: artwork.notes || '',
+      videoUrl: artwork.videoUrl || '',
+      videoTitle: artwork.videoTitle || '',
+      mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
+      order: artwork.order || 9999,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...artwork,
+    };
+
     try {
-      if (!isStaticHost()) {
-        created = await request<Artwork>('/api/admin/artworks', {
+      // Permanently write to Firestore collection 'artworks' with strict error handling
+      await saveFirestoreArtwork(created);
+    } catch (err: any) {
+      console.error('Firestore artwork creation failed:', err);
+      throw new Error(`Firestore Save Error: ${err.message || 'Failed to save artwork to database.'}`);
+    }
+
+    try {
+      const local = await getLocalPortfolioDataAsync();
+      local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
+      await saveLocalPortfolioDataAsync(local);
+    } catch (e) {
+      console.warn('Local cache update note:', e);
+    }
+
+    if (!isStaticHost()) {
+      try {
+        await request('/api/admin/artworks', {
           method: 'POST',
-          body: JSON.stringify(artwork),
+          body: JSON.stringify(created),
         });
+      } catch (e) {
+        console.warn('Backend server sync note:', e);
       }
-    } catch (serverErr) {
-      console.warn('Backend server artwork post note:', serverErr);
     }
-
-    if (!created) {
-      created = {
-        id: artwork.id || `art-${Date.now()}`,
-        slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        title: artwork.title || 'Untitled Work',
-        year: artwork.year || new Date().getFullYear(),
-        categorySlug: artwork.categorySlug || 'sculpture',
-        categoryName: artwork.categoryName || 'Sculpture',
-        medium: artwork.medium || '',
-        dimensions: artwork.dimensions || '',
-        description: artwork.description || '',
-        mainImage: artwork.mainImage || '',
-        images: artwork.images || [],
-        isFeatured: artwork.isFeatured || false,
-        notes: artwork.notes || '',
-        videoUrl: artwork.videoUrl || '',
-        videoTitle: artwork.videoTitle || '',
-        mediaType: artwork.mediaType || (artwork.videoUrl ? 'video' : 'image'),
-        order: artwork.order || 9999,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // Direct commit to Cloud Firestore artworks collection
-    await saveFirestoreArtwork(created);
-
-    // Update local cache
-    const local = await getLocalPortfolioDataAsync();
-    local.artworks = [created, ...local.artworks.filter(a => a.id !== created!.id)];
-    await saveLocalPortfolioDataAsync(local);
 
     return created;
   },
@@ -627,57 +657,88 @@ export const api = {
   },
 
   updateArtwork: async (id: string, updates: Partial<Artwork>): Promise<Artwork> => {
-    let updated: Artwork | null = null;
-    try {
-      if (!isStaticHost()) {
-        updated = await request<Artwork>(`/api/admin/artworks/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify(updates),
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server update note:', serverErr);
-    }
-
     const local = await getLocalPortfolioDataAsync();
     const idx = local.artworks.findIndex(a => a.id === id);
+    let updated: Artwork;
+
     if (idx !== -1) {
       updated = {
         ...local.artworks[idx],
         ...updates,
         updatedAt: new Date().toISOString(),
       };
-      local.artworks[idx] = updated;
-    } else if (updated) {
-      local.artworks.unshift(updated);
+    } else {
+      updated = {
+        id,
+        slug: (updates.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        title: updates.title || 'Untitled Work',
+        year: updates.year || new Date().getFullYear(),
+        categorySlug: updates.categorySlug || 'sculpture',
+        categoryName: updates.categoryName || 'Sculpture',
+        medium: updates.medium || '',
+        dimensions: updates.dimensions || '',
+        description: updates.description || '',
+        mainImage: updates.mainImage || '',
+        images: updates.images || [],
+        isFeatured: updates.isFeatured || false,
+        notes: updates.notes || '',
+        videoUrl: updates.videoUrl || '',
+        videoTitle: updates.videoTitle || '',
+        mediaType: updates.mediaType || (updates.videoUrl ? 'video' : 'image'),
+        order: updates.order || 9999,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...updates,
+      };
     }
 
-    if (updated) {
+    try {
+      // Permanently write to Firestore collection 'artworks' with strict error handling
       await saveFirestoreArtwork(updated);
-      await saveLocalPortfolioDataAsync(local);
-      return updated;
+    } catch (err: any) {
+      console.error('Firestore artwork update failed:', err);
+      throw new Error(`Firestore Update Error: ${err.message || 'Failed to update artwork in database.'}`);
     }
-    throw new Error('Artwork not found');
+
+    if (idx !== -1) {
+      local.artworks[idx] = updated;
+    } else {
+      local.artworks.unshift(updated);
+    }
+    await saveLocalPortfolioDataAsync(local);
+
+    if (!isStaticHost()) {
+      try {
+        await request(`/api/admin/artworks/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updates),
+        });
+      } catch (e) {
+        console.warn('Backend server update note:', e);
+      }
+    }
+
+    return updated;
   },
 
   deleteArtwork: async (id: string) => {
-    try {
-      if (!isStaticHost()) {
-        await request<{ success: boolean }>(`/api/admin/artworks/${id}`, {
-          method: 'DELETE',
-        });
-      }
-    } catch (serverErr) {
-      console.warn('Backend server delete note:', serverErr);
-    }
-
-    // Direct deletion from Firestore
+    // Permanently delete from Firestore collection 'artworks'
     await deleteFirestoreArtwork(id);
 
-    // Update local cache
     const local = await getLocalPortfolioDataAsync();
     local.artworks = local.artworks.filter(a => a.id !== id);
     await saveLocalPortfolioDataAsync(local);
+
+    if (!isStaticHost()) {
+      try {
+        await request(`/api/admin/artworks/${id}`, {
+          method: 'DELETE',
+        });
+      } catch (e) {
+        console.warn('Backend server delete note:', e);
+      }
+    }
+
     return { success: true };
   },
 
