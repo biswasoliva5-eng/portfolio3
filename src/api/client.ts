@@ -622,12 +622,21 @@ export const api = {
       ...artwork,
     };
 
-    // Permanently write to Firestore collection 'artworks'
-    await saveFirestoreArtwork(created);
+    try {
+      // Permanently write to Firestore collection 'artworks' with strict error handling
+      await saveFirestoreArtwork(created);
+    } catch (err: any) {
+      console.error('Firestore artwork creation failed:', err);
+      throw new Error(`Firestore Save Error: ${err.message || 'Failed to save artwork to database.'}`);
+    }
 
-    const local = await getLocalPortfolioDataAsync();
-    local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
-    await saveLocalPortfolioDataAsync(local);
+    try {
+      const local = await getLocalPortfolioDataAsync();
+      local.artworks = [created, ...local.artworks.filter(a => a.id !== created.id)];
+      await saveLocalPortfolioDataAsync(local);
+    } catch (e) {
+      console.warn('Local cache update note:', e);
+    }
 
     if (!isStaticHost()) {
       try {
@@ -683,8 +692,13 @@ export const api = {
       };
     }
 
-    // Permanently write to Firestore collection 'artworks'
-    await saveFirestoreArtwork(updated);
+    try {
+      // Permanently write to Firestore collection 'artworks' with strict error handling
+      await saveFirestoreArtwork(updated);
+    } catch (err: any) {
+      console.error('Firestore artwork update failed:', err);
+      throw new Error(`Firestore Update Error: ${err.message || 'Failed to update artwork in database.'}`);
+    }
 
     if (idx !== -1) {
       local.artworks[idx] = updated;
