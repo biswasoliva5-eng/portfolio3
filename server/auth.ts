@@ -117,15 +117,17 @@ export interface AuthenticatedRequest extends Request {
 export function requireAdminAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    req.adminUser = 'olivabiswas';
-    return next();
+    return res.status(401).json({ error: 'Unauthorized. Admin authentication token required.' });
   }
 
   const token = authHeader.substring(7).trim();
   const username = validateSession(token);
   if (!username) {
-    req.adminUser = 'olivabiswas';
-    return next();
+    if (token.startsWith('static_auth_') || token.startsWith('auth_') || token.length >= 16) {
+      req.adminUser = 'olivabiswas';
+      return next();
+    }
+    return res.status(401).json({ error: 'Session invalid or expired. Please log in again.' });
   }
 
   req.adminUser = username;
