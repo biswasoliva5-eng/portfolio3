@@ -105,28 +105,21 @@ export function mergePortfolioData(
 
   const artMap = new Map<string, Artwork>();
 
-  (base.artworks || []).forEach(baseArt => {
-    if (!DUMMY_IDS.has(baseArt.id)) {
-      artMap.set(baseArt.id, { ...baseArt });
-    }
-  });
-
+  // 1. Populate from cloud (Firestore) first as source of truth for user edits/category changes
   if (cloud && Array.isArray(cloud.artworks)) {
     cloud.artworks.forEach(cloudArt => {
-      if (DUMMY_IDS.has(cloudArt.id)) return;
-      const existing = artMap.get(cloudArt.id);
-      if (existing) {
-        if ((!existing.images || existing.images.length === 0) && cloudArt.images && cloudArt.images.length > 0) {
-          existing.images = cloudArt.images;
-        }
-        if (!existing.mainImage && cloudArt.mainImage) {
-          existing.mainImage = cloudArt.mainImage;
-        }
-      } else {
+      if (!DUMMY_IDS.has(cloudArt.id)) {
         artMap.set(cloudArt.id, { ...cloudArt });
       }
     });
   }
+
+  // 2. Add base artworks not present in cloud
+  (base.artworks || []).forEach(baseArt => {
+    if (!DUMMY_IDS.has(baseArt.id) && !artMap.has(baseArt.id)) {
+      artMap.set(baseArt.id, { ...baseArt });
+    }
+  });
 
   const artworks = Array.from(artMap.values())
     .filter(a => !DUMMY_IDS.has(a.id))
