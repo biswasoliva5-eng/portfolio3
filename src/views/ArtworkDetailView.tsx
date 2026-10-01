@@ -25,14 +25,24 @@ function getEmbedVideoUrl(url?: string): { isEmbed: boolean; embedUrl?: string }
 }
 
 export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) => {
-  const { data, navigate, formatUrl } = usePortfolio();
+  const { data, loading, navigate, formatUrl } = usePortfolio();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [activeMediaTab, setActiveMediaTab] = useState<'image' | 'video'>('image');
 
   const artworks = data?.artworks || [];
-  const currentIndex = artworks.findIndex(a => a.slug === slug);
+  const decodedSlug = decodeURIComponent(slug || '');
+  const currentIndex = artworks.findIndex(a => a.slug === decodedSlug || a.id === decodedSlug || a.slug === slug || a.id === slug);
   const artwork = artworks[currentIndex] || null;
+
+  if (loading && (!data || artworks.length === 0)) {
+    return (
+      <div className="py-24 text-center space-y-3">
+        <div className="w-6 h-6 border-2 border-neutral-900 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-xs text-neutral-500 font-mono">Loading artwork...</p>
+      </div>
+    );
+  }
 
   const prevArtwork = currentIndex > 0 ? artworks[currentIndex - 1] : null;
   const nextArtwork = currentIndex < artworks.length - 1 ? artworks[currentIndex + 1] : null;

@@ -611,7 +611,7 @@ export const api = {
   addArtwork: async (artwork: Partial<Artwork>): Promise<Artwork> => {
     const created: Artwork = {
       id: artwork.id || `art-${Date.now()}`,
-      slug: (artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      slug: ((artwork.title || 'untitled').toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]+/g, '-').replace(/^-+|-+$/g, '') || artwork.id || `art-${Date.now()}`),
       title: artwork.title || 'Untitled Work',
       year: artwork.year || new Date().getFullYear(),
       categorySlug: artwork.categorySlug || 'sculpture',

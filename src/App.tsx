@@ -40,8 +40,8 @@ const AppContent: React.FC = () => {
     } else if (currentPath === '/contact') {
       document.title = `Contact | Oliva Biswas`;
     } else if (currentPath.startsWith('/artwork/')) {
-      const slug = currentPath.replace('/artwork/', '');
-      const art = data?.artworks.find(a => a.slug === slug);
+      const slug = decodeURIComponent(currentPath.replace('/artwork/', ''));
+      const art = data?.artworks.find(a => a.slug === slug || a.id === slug);
       document.title = art ? `${art.title} (${art.year}) | Oliva Biswas` : `Artwork | Oliva Biswas`;
     } else {
       const catSlug = currentPath.replace(/^\//, '');
