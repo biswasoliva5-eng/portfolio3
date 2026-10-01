@@ -58,7 +58,7 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ categorySlug }) => {
             <article
               key={artwork.id}
               className="group cursor-pointer flex flex-col"
-              onClick={() => navigate(`/artwork/${artwork.slug}`)}
+              onClick={() => navigate(`/artwork/${artwork.id}`)}
             >
               <div className="relative aspect-4/5 overflow-hidden bg-neutral-100 mb-3">
                 <ArtworkImage
@@ -84,10 +84,10 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ categorySlug }) => {
               <div className="space-y-0.5 text-xs text-neutral-600">
                 <h3 className="font-normal text-neutral-950 text-sm tracking-tight group-hover:text-neutral-600 transition-colors">
                   <a
-                    href={formatUrl(`/artwork/${artwork.slug}`)}
+                    href={formatUrl(`/artwork/${artwork.id}`)}
                     onClick={e => {
                       e.preventDefault();
-                      navigate(`/artwork/${artwork.slug}`);
+                      navigate(`/artwork/${artwork.id}`);
                     }}
                   >
                     {artwork.title}
