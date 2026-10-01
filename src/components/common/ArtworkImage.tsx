@@ -82,16 +82,22 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
   if (hasError || !resolvedSrc) {
     return (
       <div
-        className={`bg-neutral-100 flex flex-col items-center justify-center p-4 text-center select-none ${className}`}
-        style={{ minHeight: '120px' }}
+        className={`relative overflow-hidden bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 text-white flex flex-col items-center justify-center p-6 text-center select-none shadow-inner ${className}`}
+        style={{ minHeight: '260px' }}
       >
-        <div className="w-8 h-8 rounded-full bg-neutral-200 text-neutral-500 flex items-center justify-center text-xs font-serif font-semibold mb-1.5">
-          {alt ? alt.charAt(0).toUpperCase() : 'A'}
+        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
+        
+        <div className="relative z-10 flex flex-col items-center max-w-[90%]">
+          <div className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md text-amber-300 flex items-center justify-center text-sm font-serif font-bold mb-3 border border-white/20 shadow-sm">
+            {alt ? alt.charAt(0).toUpperCase() : 'O'}
+          </div>
+          <span className="text-xs font-serif tracking-wider text-neutral-200 uppercase font-medium line-clamp-2 max-w-[95%] mb-1">
+            {fallbackText || alt || 'Untitled Artwork'}
+          </span>
+          <span className="text-[10px] tracking-widest text-amber-300/80 uppercase font-mono mt-1">
+            OLIVA BISWAS ARCHIVE
+          </span>
         </div>
-        <span className="text-[11px] text-neutral-600 font-medium line-clamp-1 max-w-[85%]">
-          {fallbackText || alt || 'Artwork Image'}
-        </span>
-        <span className="text-[10px] text-neutral-400 mt-0.5">Contemporary Fine Arts</span>
       </div>
     );
   }
