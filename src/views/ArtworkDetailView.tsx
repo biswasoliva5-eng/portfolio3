@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePortfolio } from '../context/PortfolioContext';
 import { Lightbox } from '../components/Lightbox';
 import { ArrowLeft, Maximize2, ChevronLeft, ChevronRight, Video, Image as ImageIcon, Play } from 'lucide-react';
@@ -44,6 +44,21 @@ export const ArtworkDetailView: React.FC<ArtworkDetailViewProps> = ({ slug }) =>
     }
     return [{ id: 'main', url: artwork.mainImage, alt: artwork.title, isPrimary: true }];
   }, [artwork]);
+
+  useEffect(() => {
+    if (artwork && images.length > 0) {
+      if (artwork.mainImage) {
+        const matchIdx = images.findIndex(img => img.url === artwork.mainImage);
+        if (matchIdx !== -1) {
+          setSelectedImageIndex(matchIdx);
+        } else {
+          setSelectedImageIndex(0);
+        }
+      } else {
+        setSelectedImageIndex(0);
+      }
+    }
+  }, [artwork, images]);
 
   if (!artwork) {
     return (
