@@ -549,32 +549,6 @@ export const defaultArtworks: Artwork[] = [
     ]
   },
   {
-    "medium": "",
-    "categorySlug": "drawing",
-    "id": "art-1790144639767",
-    "dimensions": "",
-    "images": [
-      {
-        "url": "/uploads/gesture-art-1790144639767-extra-0.jpg",
-        "alt": "Artwork view",
-        "isPrimary": true,
-        "order": 1,
-        "id": "img-1790144624052-0"
-      }
-    ],
-    "mainImage": "/uploads/gesture-art-1790144639767.jpg",
-    "notes": "",
-    "updatedAt": "2026-09-23T06:24:16.518Z",
-    "categoryName": "Drawing",
-    "order": 19,
-    "createdAt": "2026-09-23T06:23:59.767Z",
-    "isFeatured": false,
-    "slug": "gesture",
-    "description": "",
-    "title": "Gesture",
-    "year": 2025
-  },
-  {
     "dimensions": "",
     "categorySlug": "drawing",
     "description": "",

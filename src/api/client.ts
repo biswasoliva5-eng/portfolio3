@@ -99,7 +99,8 @@ export function mergePortfolioData(
     'art-d1', 'art-d2',
     'art-s1', 'art-s2',
     'art-dw1', 'art-dw2',
-    'art-exp1', 'art-exp2'
+    'art-exp1', 'art-exp2',
+    'art-1790144639767'
   ]);
 
   const artMap = new Map<string, Artwork>();
